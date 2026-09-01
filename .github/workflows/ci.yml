@@ -1,0 +1,85 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            runtime: win-x64
+            executable: dpl-test-target.exe
+          - os: ubuntu-latest
+            runtime: linux-x64
+            executable: dpl-test-target
+          - os: macos-latest
+            runtime: osx-x64
+            executable: dpl-test-target
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.302
+
+      - name: Restore locked dependencies
+        run: dotnet restore DotNetPerformanceLab.slnx --locked-mode
+
+      - name: Build Release
+        run: dotnet build DotNetPerformanceLab.slnx --configuration Release --no-restore
+
+      - name: Run tests
+        run: dotnet test DotNetPerformanceLab.slnx --configuration Release --no-build
+
+      - name: Publish controlled test target
+        env:
+          DPL_PROJECT_PATH: ${{ github.workspace }}/tests/DotNetPerformanceLab.TestTarget/DotNetPerformanceLab.TestTarget.csproj
+          DPL_RUNTIME_IDENTIFIER: ${{ matrix.runtime }}
+          DPL_PUBLISH_DIRECTORY: ${{ runner.temp }}/dotnet-performance-target
+          DPL_CONFIGURATION: Release
+          DPL_SELF_CONTAINED: true
+          DPL_PUBLISH_AOT: false
+          DPL_PUBLISH_TRIMMED: false
+          DPL_LOCKED_RESTORE: true
+        run: dotnet run --project src/DotNetPerformanceLab/DotNetPerformanceLab.csproj --configuration Release --no-build -- publish
+
+      - name: Run cross-platform sampling smoke test
+        env:
+          DPL_TARGET_PATH: ${{ runner.temp }}/dotnet-performance-target/${{ matrix.executable }}
+          DPL_ALLOWED_ROOT: ${{ runner.temp }}/dotnet-performance-target
+          DPL_ARGUMENTS_JSON: '["--lifetime-seconds","30"]'
+          DPL_REPORT_LABEL: Cross-platform smoke target
+          DPL_OUTPUT_DIRECTORY: ${{ runner.temp }}/dotnet-performance-report
+          DPL_WARMUP_SECONDS: 1
+          DPL_MEASUREMENT_SECONDS: 5
+          DPL_SAMPLE_INTERVAL_MS: 500
+          DPL_COOLDOWN_SECONDS: 0
+          DPL_ITERATIONS: 1
+          DPL_COLLECT_COUNTERS: false
+          DPL_COLLECT_TRACE: false
+        run: dotnet run --project src/DotNetPerformanceLab/DotNetPerformanceLab.csproj --configuration Release --no-build
+
+      - name: Verify generated report
+        shell: pwsh
+        run: |
+          if (-not (Test-Path -LiteralPath "${{ runner.temp }}/dotnet-performance-report/report.md")) {
+            throw "The cross-platform smoke test did not generate report.md."
+          }

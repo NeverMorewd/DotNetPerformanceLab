@@ -81,7 +81,6 @@ permissions:
 
 jobs:
   profile:
-    if: ${{ github.event_name == 'workflow_dispatch' }}
     name: Profile ${{ inputs.report-label }}
     runs-on: [self-hosted, metric-test, '${{ inputs.platform }}']
     environment: performance-lab

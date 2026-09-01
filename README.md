@@ -17,9 +17,8 @@ The lab generates a Markdown report, raw JSON and CSV samples, SVG charts, runti
 
 ## Security model
 
-Performance workflows execute applications on a self-hosted machine. Both reusable workflows therefore:
+Performance workflows execute applications on a self-hosted machine. Consumer workflows must use trusted triggers; the examples in this repository use `workflow_dispatch` so arbitrary pull-request code cannot reach a runner. Both reusable workflows:
 
-- run only when the caller was started with `workflow_dispatch`;
 - require the fixed `self-hosted` and `metric-test` runner labels;
 - use the fixed `performance-lab` GitHub Environment;
 - request read-only repository permissions;

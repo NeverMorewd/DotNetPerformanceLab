@@ -102,7 +102,6 @@ permissions:
 
 jobs:
   profile:
-    if: ${{ github.event_name == 'workflow_dispatch' }}
     name: Profile ${{ inputs.report-label }}
     runs-on: ${{ inputs.use-github-hosted-validation-runner && 'windows-latest' || fromJSON(format('["self-hosted","metric-test","{0}"]', inputs.platform)) }}
     environment: ${{ inputs.use-github-hosted-validation-runner && 'toolkit-validation' || 'performance-lab' }}

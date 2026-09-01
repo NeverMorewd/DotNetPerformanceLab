@@ -1,16 +1,7 @@
-name: Self-hosted end-to-end test
+name: End-to-end reusable workflow test
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - feature/performance-lab-v1
-    paths:
-      - .github/workflows/profile-repository.yml
-      - .github/workflows/self-test.yml
-      - .config/dotnet-tools.json
-      - src/**
-      - tests/DotNetPerformanceLab.TestTarget/**
 
 permissions:
   contents: read
@@ -36,5 +27,5 @@ jobs:
       collect-trace: true
       trace-duration-seconds: 5
       artifact-retention-days: 3
-      toolkit-ref: feature/performance-lab-v1
+      toolkit-ref: ${{ github.ref_name }}
       use-github-hosted-validation-runner: true

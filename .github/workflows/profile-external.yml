@@ -73,7 +73,7 @@ on:
         type: number
       toolkit-ref:
         required: false
-        default: main
+        default: v1
         type: string
 
 permissions:

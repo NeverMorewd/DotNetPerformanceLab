@@ -80,11 +80,31 @@ public sealed class PerformanceRunner
         }
 
         await MarkdownReport.WriteAsync(Path.Combine(outputDirectory, "report.md"), result, cancellationToken).ConfigureAwait(false);
-        var chartSamples = result.Iterations.SelectMany(iteration => iteration.Samples).ToArray();
+        var chartSamples = CreateChartTimeline(result.Iterations);
         var chartDirectory = Path.Combine(outputDirectory, "charts");
         await SvgChart.WriteAsync(Path.Combine(chartDirectory, "cpu.svg"), "CPU core equivalent", "%", chartSamples, sample => sample.CpuCorePercent, cancellationToken).ConfigureAwait(false);
         await SvgChart.WriteAsync(Path.Combine(chartDirectory, "working-set.svg"), "Working set", "MB", chartSamples, sample => sample.WorkingSetBytes / 1024d / 1024d, cancellationToken).ConfigureAwait(false);
         await SvgChart.WriteAsync(Path.Combine(chartDirectory, "private-memory.svg"), "Private memory", "MB", chartSamples, sample => sample.PrivateMemoryBytes / 1024d / 1024d, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static IReadOnlyList<ProcessSample> CreateChartTimeline(IReadOnlyList<IterationResult> iterations)
+    {
+        var samples = new List<ProcessSample>();
+        var offset = 0d;
+        foreach (var iteration in iterations)
+        {
+            foreach (var sample in iteration.Samples)
+            {
+                samples.Add(sample with { ElapsedSeconds = sample.ElapsedSeconds + offset });
+            }
+
+            if (iteration.Samples.Count > 0)
+            {
+                offset = samples[^1].ElapsedSeconds + 1;
+            }
+        }
+
+        return samples;
     }
 
     private static EnvironmentSnapshot CaptureEnvironment() => new(

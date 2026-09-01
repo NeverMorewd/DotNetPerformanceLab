@@ -75,9 +75,9 @@ public static class MarkdownReport
                 var divisor = metric.Unit.StartsWith("MB", StringComparison.Ordinal) ? BytesPerMegabyte : metric.Unit.StartsWith("ms", StringComparison.Ordinal) ? 0.001 : 1;
                 builder.Append("| ").Append(Escape(metric.Name))
                     .Append(" | ").Append(Escape(metric.Tags))
-                    .Append(" | ").Append(Format(metric.Mean / divisor, metric.Unit, 2))
-                    .Append(" | ").Append(Format(metric.Maximum / divisor, metric.Unit, 2))
-                    .Append(" | ").Append(Format(metric.Final / divisor, metric.Unit, 2))
+                    .Append(" | ").Append(Format(metric.Mean / divisor, MetricSuffix(metric.Unit), 2))
+                    .Append(" | ").Append(Format(metric.Maximum / divisor, MetricSuffix(metric.Unit), 2))
+                    .Append(" | ").Append(Format(metric.Final / divisor, MetricSuffix(metric.Unit), 2))
                     .Append(" | ").Append(metric.Samples)
                     .AppendLine(" |");
             }
@@ -143,6 +143,8 @@ public static class MarkdownReport
 
     private static string Format(double? value, string suffix, int decimals) =>
         value.HasValue ? value.Value.ToString($"F{decimals}", CultureInfo.InvariantCulture) + suffix : "N/A";
+
+    private static string MetricSuffix(string unit) => string.IsNullOrEmpty(unit) ? string.Empty : $" {unit}";
 
     private static string Escape(string value) => value.Replace("|", "\\|", StringComparison.Ordinal).Replace("\r", " ", StringComparison.Ordinal).Replace("\n", " ", StringComparison.Ordinal);
 

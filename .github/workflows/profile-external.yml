@@ -143,7 +143,7 @@ jobs:
       - name: Publish report to job summary
         if: ${{ always() && steps.analyze.outcome == 'success' }}
         env:
-          DPL_REPORT_PATH: ${{ runner.temp }}/dotnet-performance-report/report.md
+          DPL_REPORT_PATH: ${{ runner.temp }}/dotnet-performance-report/job-summary.md
         working-directory: .dotnet-performance-lab
         run: dotnet run --project src/DotNetPerformanceLab/DotNetPerformanceLab.csproj --configuration Release --no-build -- summary
 

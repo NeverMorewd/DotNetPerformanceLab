@@ -4,6 +4,9 @@ namespace DotNetPerformanceLab;
 
 public sealed class DiagnosticCollector
 {
+    private static readonly TimeSpan DiagnosticStartupGrace = TimeSpan.FromSeconds(15);
+    private static readonly TimeSpan ProcessShutdownGrace = TimeSpan.FromSeconds(10);
+
     public async Task<(DiagnosticArtifact Counters, DiagnosticArtifact Trace)> CollectAsync(
         RunSettings settings,
         CancellationToken cancellationToken)
@@ -60,9 +63,28 @@ public sealed class DiagnosticCollector
         try
         {
             tool.Start();
-            var stdout = tool.StandardOutput.ReadToEndAsync(cancellationToken);
-            var stderr = tool.StandardError.ReadToEndAsync(cancellationToken);
-            await tool.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+            var stdout = tool.StandardOutput.ReadToEndAsync();
+            var stderr = tool.StandardError.ReadToEndAsync();
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(duration + DiagnosticStartupGrace);
+
+            try
+            {
+                await tool.WaitForExitAsync(timeout.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                await TerminateAsync(tool).ConfigureAwait(false);
+                var timedOutLog = (await stdout.ConfigureAwait(false)) + Environment.NewLine + (await stderr.ConfigureAwait(false));
+                await File.WriteAllTextAsync(logPath, timedOutLog, cancellationToken).ConfigureAwait(false);
+                return new DiagnosticArtifact(
+                    displayName,
+                    true,
+                    false,
+                    Path.GetFileName(logPath),
+                    $"Diagnostic tool did not exit within {duration + DiagnosticStartupGrace:g}.");
+            }
+
             var log = (await stdout.ConfigureAwait(false)) + Environment.NewLine + (await stderr.ConfigureAwait(false));
             await File.WriteAllTextAsync(logPath, log, cancellationToken).ConfigureAwait(false);
 
@@ -76,6 +98,10 @@ public sealed class DiagnosticCollector
         catch (Exception exception) when (exception is InvalidOperationException or System.ComponentModel.Win32Exception)
         {
             return new DiagnosticArtifact(displayName, true, false, null, exception.Message);
+        }
+        finally
+        {
+            await TerminateAsync(tool).ConfigureAwait(false);
         }
     }
 
@@ -100,6 +126,24 @@ public sealed class DiagnosticCollector
     ];
 
     private static string Duration(TimeSpan duration) => duration.ToString(@"dd\:hh\:mm\:ss", System.Globalization.CultureInfo.InvariantCulture);
+
+    private static async Task TerminateAsync(Process process)
+    {
+        try
+        {
+            if (process.HasExited)
+            {
+                return;
+            }
+
+            process.Kill(entireProcessTree: true);
+            using var timeout = new CancellationTokenSource(ProcessShutdownGrace);
+            await process.WaitForExitAsync(timeout.Token).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or System.ComponentModel.Win32Exception or OperationCanceledException)
+        {
+        }
+    }
 
     private static async Task DelayWhileRunningAsync(Process process, TimeSpan duration, CancellationToken cancellationToken)
     {

@@ -6,6 +6,68 @@ on:
       platform:
         required: true
         type: string
+      executable-path:
+        required: true
+        type: string
+      allowed-root:
+        required: true
+        type: string
+      arguments-json:
+        required: false
+        default: '[]'
+        type: string
+      working-directory:
+        required: false
+        default: ''
+        type: string
+      report-label:
+        required: false
+        default: External .NET application
+        type: string
+      warmup-seconds:
+        required: false
+        default: 60
+        type: number
+      measurement-seconds:
+        required: false
+        default: 300
+        type: number
+      sample-interval-ms:
+        required: false
+        default: 1000
+        type: number
+      cooldown-seconds:
+        required: false
+        default: 10
+        type: number
+      iterations:
+        required: false
+        default: 3
+        type: number
+      collect-counters:
+        required: false
+        default: true
+        type: boolean
+      counter-duration-seconds:
+        required: false
+        default: 30
+        type: number
+      collect-trace:
+        required: false
+        default: false
+        type: boolean
+      trace-duration-seconds:
+        required: false
+        default: 30
+        type: number
+      fail-on-target-exit:
+        required: false
+        default: true
+        type: boolean
+      artifact-retention-days:
+        required: false
+        default: 14
+        type: number
       toolkit-ref:
         required: false
         default: fix/cross-repository-calls

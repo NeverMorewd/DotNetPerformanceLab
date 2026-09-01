@@ -37,3 +37,4 @@ jobs:
       trace-duration-seconds: 5
       artifact-retention-days: 3
       toolkit-ref: feature/performance-lab-v1
+      use-github-hosted-validation-runner: true

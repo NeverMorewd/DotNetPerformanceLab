@@ -42,6 +42,11 @@ on:
         required: false
         default: false
         type: boolean
+      locked-restore:
+        description: Require the caller project dependencies to match its packages.lock.json file.
+        required: false
+        default: true
+        type: boolean
       warmup-seconds:
         required: false
         default: 60
@@ -148,10 +153,12 @@ jobs:
           DPL_SELF_CONTAINED: ${{ inputs.self-contained }}
           DPL_PUBLISH_AOT: ${{ inputs.publish-aot }}
           DPL_PUBLISH_TRIMMED: ${{ inputs.publish-trimmed }}
+          DPL_LOCKED_RESTORE: ${{ inputs.locked-restore }}
         working-directory: .dotnet-performance-lab
         run: dotnet run --project src/DotNetPerformanceLab/DotNetPerformanceLab.csproj --configuration Release --no-build -- publish
 
       - name: Analyze published application
+        id: analyze
         env:
           DPL_TARGET_PATH: ${{ runner.temp }}/dotnet-performance-target/${{ inputs.executable-path }}
           DPL_ALLOWED_ROOT: ${{ runner.temp }}/dotnet-performance-target
@@ -172,14 +179,14 @@ jobs:
         run: dotnet run --project src/DotNetPerformanceLab/DotNetPerformanceLab.csproj --configuration Release --no-build
 
       - name: Publish report to job summary
-        if: always()
+        if: ${{ always() && steps.analyze.outcome == 'success' }}
         env:
           DPL_REPORT_PATH: ${{ runner.temp }}/dotnet-performance-report/report.md
         working-directory: .dotnet-performance-lab
         run: dotnet run --project src/DotNetPerformanceLab/DotNetPerformanceLab.csproj --configuration Release --no-build -- summary
 
       - name: Upload performance report
-        if: always()
+        if: ${{ always() && steps.analyze.outcome == 'success' }}
         uses: actions/upload-artifact@v7
         with:
           name: dotnet-performance-${{ runner.os }}-${{ github.run_id }}

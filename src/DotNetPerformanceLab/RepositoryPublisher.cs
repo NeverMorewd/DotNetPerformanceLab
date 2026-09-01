@@ -13,28 +13,47 @@ public static class RepositoryPublisher
         var selfContained = GetBoolean("DPL_SELF_CONTAINED", true);
         var publishAot = GetBoolean("DPL_PUBLISH_AOT", false);
         var publishTrimmed = GetBoolean("DPL_PUBLISH_TRIMMED", publishAot);
+        var lockedRestore = GetBoolean("DPL_LOCKED_RESTORE", true);
 
         Directory.CreateDirectory(outputDirectory);
-        var startInfo = new ProcessStartInfo
+        var publishProperties = new[] { $"-p:PublishAot={publishAot}", $"-p:PublishTrimmed={publishTrimmed}" };
+        if (lockedRestore)
         {
-            FileName = "dotnet",
-            UseShellExecute = false
-        };
-        Add(startInfo, "publish", projectPath, "--configuration", configuration, "--runtime", runtimeIdentifier,
-            "--self-contained", selfContained.ToString().ToLowerInvariant(), "--output", outputDirectory,
-            "--locked-mode", $"-p:PublishAot={publishAot}", $"-p:PublishTrimmed={publishTrimmed}");
+            var lockedRestoreExitCode = await RunDotNetAsync(
+                ["restore", projectPath, "--locked-mode"],
+                cancellationToken).ConfigureAwait(false);
+            if (lockedRestoreExitCode != 0)
+            {
+                return lockedRestoreExitCode;
+            }
+        }
 
-        using var process = Process.Start(startInfo) ?? throw new InvalidOperationException("Failed to start dotnet publish.");
-        await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
-        return process.ExitCode;
+        var restoreExitCode = await RunDotNetAsync(
+            ["restore", projectPath, "--runtime", runtimeIdentifier, .. publishProperties],
+            cancellationToken).ConfigureAwait(false);
+        if (restoreExitCode != 0)
+        {
+            return restoreExitCode;
+        }
+
+        return await RunDotNetAsync(
+            ["publish", projectPath, "--configuration", configuration, "--runtime", runtimeIdentifier,
+                "--self-contained", selfContained.ToString().ToLowerInvariant(), "--output", outputDirectory,
+                "--no-restore", .. publishProperties],
+            cancellationToken).ConfigureAwait(false);
     }
 
-    private static void Add(ProcessStartInfo startInfo, params string[] arguments)
+    private static async Task<int> RunDotNetAsync(IReadOnlyList<string> arguments, CancellationToken cancellationToken)
     {
+        var startInfo = new ProcessStartInfo { FileName = "dotnet", UseShellExecute = false };
         foreach (var argument in arguments)
         {
             startInfo.ArgumentList.Add(argument);
         }
+
+        using var process = Process.Start(startInfo) ?? throw new InvalidOperationException("Failed to start dotnet CLI.");
+        await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+        return process.ExitCode;
     }
 
     private static string Require(string name) =>

@@ -118,6 +118,7 @@ jobs:
         run: dotnet build src/DotNetPerformanceLab/DotNetPerformanceLab.csproj --configuration Release --no-restore
 
       - name: Analyze executable
+        id: analyze
         env:
           DPL_TARGET_PATH: ${{ inputs.executable-path }}
           DPL_ALLOWED_ROOT: ${{ inputs.allowed-root }}
@@ -140,14 +141,14 @@ jobs:
         run: dotnet run --project src/DotNetPerformanceLab/DotNetPerformanceLab.csproj --configuration Release --no-build
 
       - name: Publish report to job summary
-        if: always()
+        if: ${{ always() && steps.analyze.outcome == 'success' }}
         env:
           DPL_REPORT_PATH: ${{ runner.temp }}/dotnet-performance-report/report.md
         working-directory: .dotnet-performance-lab
         run: dotnet run --project src/DotNetPerformanceLab/DotNetPerformanceLab.csproj --configuration Release --no-build -- summary
 
       - name: Upload performance report
-        if: always()
+        if: ${{ always() && steps.analyze.outcome == 'success' }}
         uses: actions/upload-artifact@v7
         with:
           name: dotnet-performance-${{ runner.os }}-${{ github.run_id }}

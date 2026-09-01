@@ -1,0 +1,13 @@
+name: Cross-repository probe
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: windows-latest
+    steps:
+      - run: Write-Host "Cross-repository reusable workflow is available."

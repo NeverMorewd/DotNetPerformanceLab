@@ -31,6 +31,18 @@ public sealed class TargetValidatorTests : IDisposable
         Assert.Throws<UnauthorizedAccessException>(() => TargetValidator.Validate(settings));
     }
 
+    [Fact]
+    public void ValidateRejectsWorkingDirectoryOutsideAllowedRoots()
+    {
+        var allowed = Path.Combine(_root, "allowed");
+        var target = Path.Combine(allowed, "app.exe");
+        Directory.CreateDirectory(allowed);
+        File.WriteAllText(target, string.Empty);
+        var settings = CreateSettings(target, [allowed]) with { WorkingDirectory = _root };
+
+        Assert.Throws<UnauthorizedAccessException>(() => TargetValidator.Validate(settings));
+    }
+
     public void Dispose()
     {
         Directory.Delete(_root, recursive: true);

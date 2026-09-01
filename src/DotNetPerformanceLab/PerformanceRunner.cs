@@ -64,10 +64,16 @@ public sealed class PerformanceRunner
     {
         if (Directory.Exists(outputDirectory))
         {
-            Directory.Delete(outputDirectory, recursive: true);
+            if (Directory.EnumerateFileSystemEntries(outputDirectory).Any())
+            {
+                throw new InvalidOperationException($"The output directory must be empty: {outputDirectory}");
+            }
+        }
+        else
+        {
+            Directory.CreateDirectory(outputDirectory);
         }
 
-        Directory.CreateDirectory(outputDirectory);
         Directory.CreateDirectory(Path.Combine(outputDirectory, "charts"));
     }
 

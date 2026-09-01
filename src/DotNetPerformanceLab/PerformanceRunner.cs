@@ -85,7 +85,16 @@ public sealed class PerformanceRunner
             await JsonSerializer.SerializeAsync(stream, result, LabJsonContext.Default.PerformanceRunResult, cancellationToken).ConfigureAwait(false);
         }
 
-        await MarkdownReport.WriteAsync(Path.Combine(outputDirectory, "report.md"), result, cancellationToken).ConfigureAwait(false);
+        await MarkdownReport.WriteAsync(
+            Path.Combine(outputDirectory, "report.md"),
+            result,
+            MarkdownReportTarget.DownloadableArtifact,
+            cancellationToken).ConfigureAwait(false);
+        await MarkdownReport.WriteAsync(
+            Path.Combine(outputDirectory, "job-summary.md"),
+            result,
+            MarkdownReportTarget.GitHubJobSummary,
+            cancellationToken).ConfigureAwait(false);
         var chartSamples = CreateChartTimeline(result.Iterations);
         var chartDirectory = Path.Combine(outputDirectory, "charts");
         await SvgChart.WriteAsync(Path.Combine(chartDirectory, "cpu.svg"), "CPU core equivalent", "%", chartSamples, sample => sample.CpuCorePercent, cancellationToken).ConfigureAwait(false);

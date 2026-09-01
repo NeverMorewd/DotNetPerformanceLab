@@ -7,7 +7,11 @@ public static class MarkdownReport
 {
     private const double BytesPerMegabyte = 1024 * 1024;
 
-    public static async Task WriteAsync(string path, PerformanceRunResult result, CancellationToken cancellationToken)
+    public static async Task WriteAsync(
+        string path,
+        PerformanceRunResult result,
+        MarkdownReportTarget target,
+        CancellationToken cancellationToken)
     {
         var builder = new StringBuilder();
         builder.AppendLine("# .NET Performance Analysis Report").AppendLine();
@@ -84,9 +88,16 @@ public static class MarkdownReport
         }
 
         builder.AppendLine().AppendLine("## Charts").AppendLine();
-        builder.AppendLine("![CPU usage](charts/cpu.svg)").AppendLine();
-        builder.AppendLine("![Working set](charts/working-set.svg)").AppendLine();
-        builder.AppendLine("![Private memory](charts/private-memory.svg)").AppendLine();
+        if (target == MarkdownReportTarget.DownloadableArtifact)
+        {
+            builder.AppendLine("![CPU usage](charts/cpu.svg)").AppendLine();
+            builder.AppendLine("![Working set](charts/working-set.svg)").AppendLine();
+            builder.AppendLine("![Private memory](charts/private-memory.svg)").AppendLine();
+        }
+        else
+        {
+            builder.AppendLine("Download the performance report artifact from this workflow run to view the full-resolution SVG charts.").AppendLine();
+        }
 
         builder.AppendLine("## Interpretation notes").AppendLine();
         builder.AppendLine("- Process metrics are suitable for comparisons only when runs use the same runner, operating system, power profile, workload, and measurement configuration.");
@@ -149,4 +160,10 @@ public static class MarkdownReport
     private static string Escape(string value) => value.Replace("|", "\\|", StringComparison.Ordinal).Replace("\r", " ", StringComparison.Ordinal).Replace("\n", " ", StringComparison.Ordinal);
 
     private static string EscapeCode(string value) => value.Replace("`", "'", StringComparison.Ordinal);
+}
+
+public enum MarkdownReportTarget
+{
+    DownloadableArtifact,
+    GitHubJobSummary
 }

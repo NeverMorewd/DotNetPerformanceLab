@@ -2,12 +2,18 @@ name: Cross-repository probe
 
 on:
   workflow_call:
+    inputs:
+      platform:
+        required: true
+        type: string
 
 permissions:
   contents: read
 
 jobs:
   probe:
-    runs-on: windows-latest
+    runs-on: [self-hosted, metric-test, '${{ inputs.platform }}']
+    environment: performance-lab
+    timeout-minutes: 15
     steps:
       - run: Write-Host "Cross-repository reusable workflow is available."

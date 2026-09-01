@@ -6,6 +6,10 @@ on:
       platform:
         required: true
         type: string
+      toolkit-ref:
+        required: false
+        default: fix/cross-repository-calls
+        type: string
 
 permissions:
   contents: read
@@ -16,4 +20,37 @@ jobs:
     environment: performance-lab
     timeout-minutes: 15
     steps:
-      - run: Write-Host "Cross-repository reusable workflow is available."
+      - name: Checkout caller repository
+        uses: actions/checkout@v7
+        with:
+          path: target
+          persist-credentials: false
+
+      - name: Checkout performance toolkit
+        uses: actions/checkout@v7
+        with:
+          repository: NeverMorewd/DotNetPerformanceLab
+          ref: ${{ inputs.toolkit-ref }}
+          path: .dotnet-performance-lab
+          persist-credentials: false
+
+      - name: Set up diagnostic runtimes
+        uses: actions/setup-dotnet@v6
+        env:
+          DOTNET_INSTALL_DIR: ${{ runner.temp }}/dotnet
+        with:
+          dotnet-version: |
+            9.0.x
+            10.0.302
+
+      - name: Restore locked toolkit dependencies
+        working-directory: .dotnet-performance-lab
+        run: dotnet restore DotNetPerformanceLab.slnx --locked-mode
+
+      - name: Restore pinned diagnostic tools
+        working-directory: .dotnet-performance-lab
+        run: dotnet tool restore
+
+      - name: Build performance harness
+        working-directory: .dotnet-performance-lab
+        run: dotnet build src/DotNetPerformanceLab/DotNetPerformanceLab.csproj --configuration Release --no-restore

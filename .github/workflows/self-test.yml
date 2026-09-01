@@ -1,0 +1,39 @@
+name: Self-hosted end-to-end test
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/performance-lab-v1
+    paths:
+      - .github/workflows/profile-repository.yml
+      - .github/workflows/self-test.yml
+      - .config/dotnet-tools.json
+      - src/**
+      - tests/DotNetPerformanceLab.TestTarget/**
+
+permissions:
+  contents: read
+
+jobs:
+  profile:
+    uses: ./.github/workflows/profile-repository.yml
+    with:
+      platform: Windows
+      project-path: tests/DotNetPerformanceLab.TestTarget/DotNetPerformanceLab.TestTarget.csproj
+      runtime-identifier: win-x64
+      executable-path: dpl-test-target.exe
+      arguments-json: '["--lifetime-seconds","60"]'
+      report-label: Performance Lab test target
+      self-contained: true
+      warmup-seconds: 1
+      measurement-seconds: 5
+      sample-interval-ms: 500
+      cooldown-seconds: 0
+      iterations: 1
+      collect-counters: true
+      counter-duration-seconds: 5
+      collect-trace: true
+      trace-duration-seconds: 5
+      artifact-retention-days: 3
+      toolkit-ref: feature/performance-lab-v1

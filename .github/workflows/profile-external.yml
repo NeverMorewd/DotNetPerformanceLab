@@ -1,0 +1,156 @@
+name: Profile external executable
+
+on:
+  workflow_call:
+    inputs:
+      platform:
+        description: "Runner OS label: Windows, Linux, or macOS."
+        required: true
+        type: string
+      executable-path:
+        description: Absolute executable path on the performance runner.
+        required: true
+        type: string
+      allowed-root:
+        description: Absolute directory allowed to contain the executable.
+        required: true
+        type: string
+      arguments-json:
+        required: false
+        default: '[]'
+        type: string
+      working-directory:
+        required: false
+        default: ''
+        type: string
+      report-label:
+        required: false
+        default: External .NET application
+        type: string
+      warmup-seconds:
+        required: false
+        default: 60
+        type: number
+      measurement-seconds:
+        required: false
+        default: 300
+        type: number
+      sample-interval-ms:
+        required: false
+        default: 1000
+        type: number
+      cooldown-seconds:
+        required: false
+        default: 10
+        type: number
+      iterations:
+        required: false
+        default: 3
+        type: number
+      collect-counters:
+        required: false
+        default: true
+        type: boolean
+      counter-duration-seconds:
+        required: false
+        default: 30
+        type: number
+      collect-trace:
+        required: false
+        default: false
+        type: boolean
+      trace-duration-seconds:
+        required: false
+        default: 30
+        type: number
+      fail-on-target-exit:
+        required: false
+        default: true
+        type: boolean
+      artifact-retention-days:
+        required: false
+        default: 14
+        type: number
+      toolkit-ref:
+        required: false
+        default: main
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  profile:
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    name: Profile ${{ inputs.report-label }}
+    runs-on: [self-hosted, metric-test, '${{ inputs.platform }}']
+    environment: performance-lab
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout performance toolkit
+        uses: actions/checkout@v7
+        with:
+          repository: NeverMorewd/DotNetPerformanceLab
+          ref: ${{ inputs.toolkit-ref }}
+          path: .dotnet-performance-lab
+          persist-credentials: false
+
+      - name: Set up diagnostic runtimes
+        uses: actions/setup-dotnet@v6
+        env:
+          DOTNET_INSTALL_DIR: ${{ runner.temp }}/dotnet
+        with:
+          dotnet-version: |
+            9.0.x
+            10.0.302
+
+      - name: Restore locked toolkit dependencies
+        working-directory: .dotnet-performance-lab
+        run: dotnet restore DotNetPerformanceLab.slnx --locked-mode
+
+      - name: Restore pinned diagnostic tools
+        working-directory: .dotnet-performance-lab
+        run: dotnet tool restore
+
+      - name: Build performance harness
+        working-directory: .dotnet-performance-lab
+        run: dotnet build src/DotNetPerformanceLab/DotNetPerformanceLab.csproj --configuration Release --no-restore
+
+      - name: Analyze executable
+        env:
+          DPL_TARGET_PATH: ${{ inputs.executable-path }}
+          DPL_ALLOWED_ROOT: ${{ inputs.allowed-root }}
+          DPL_ARGUMENTS_JSON: ${{ inputs.arguments-json }}
+          DPL_WORKING_DIRECTORY: ${{ inputs.working-directory }}
+          DPL_REPORT_LABEL: ${{ inputs.report-label }}
+          DPL_OUTPUT_DIRECTORY: ${{ runner.temp }}/dotnet-performance-report
+          DPL_TOOL_DIRECTORY: ${{ github.workspace }}/.dotnet-performance-lab
+          DPL_WARMUP_SECONDS: ${{ inputs.warmup-seconds }}
+          DPL_MEASUREMENT_SECONDS: ${{ inputs.measurement-seconds }}
+          DPL_SAMPLE_INTERVAL_MS: ${{ inputs.sample-interval-ms }}
+          DPL_COOLDOWN_SECONDS: ${{ inputs.cooldown-seconds }}
+          DPL_ITERATIONS: ${{ inputs.iterations }}
+          DPL_COLLECT_COUNTERS: ${{ inputs.collect-counters }}
+          DPL_COUNTER_DURATION_SECONDS: ${{ inputs.counter-duration-seconds }}
+          DPL_COLLECT_TRACE: ${{ inputs.collect-trace }}
+          DPL_TRACE_DURATION_SECONDS: ${{ inputs.trace-duration-seconds }}
+          DPL_FAIL_ON_TARGET_EXIT: ${{ inputs.fail-on-target-exit }}
+        working-directory: .dotnet-performance-lab
+        run: dotnet run --project src/DotNetPerformanceLab/DotNetPerformanceLab.csproj --configuration Release --no-build
+
+      - name: Publish report to job summary
+        if: always()
+        env:
+          DPL_REPORT_PATH: ${{ runner.temp }}/dotnet-performance-report/report.md
+        working-directory: .dotnet-performance-lab
+        run: dotnet run --project src/DotNetPerformanceLab/DotNetPerformanceLab.csproj --configuration Release --no-build -- summary
+
+      - name: Upload performance report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: dotnet-performance-${{ runner.os }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/dotnet-performance-report
+          if-no-files-found: error
+          retention-days: ${{ inputs.artifact-retention-days }}

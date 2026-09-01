@@ -2,61 +2,153 @@
 
 Reusable GitHub Actions workflows and a cross-platform performance harness for measuring .NET applications on self-hosted runners.
 
-The project produces a portable Markdown report together with raw JSON, CSV, charts, and optional EventPipe diagnostics. Baseline process sampling is kept separate from diagnostic collection so profiler overhead does not contaminate the primary CPU and memory measurements.
+The lab generates a Markdown report, raw JSON and CSV samples, SVG charts, runtime counters, and optional EventPipe traces. Baseline process sampling is isolated from diagnostic collection so profiler overhead does not contaminate the primary CPU and memory measurements.
 
-## Goals
+## Capabilities
 
-- Measure any executable with cross-platform process APIs.
-- Add managed runtime metrics when EventPipe is available.
-- Support framework-dependent, self-contained, and Native AOT applications.
-- Generate deterministic, downloadable reports for Windows, macOS, and Linux.
-- Keep caller workflows small by exposing versioned reusable workflows.
-- Degrade gracefully for .NET Framework and non-.NET processes.
+- Windows, macOS, and Linux process sampling through .NET APIs.
+- Framework-dependent, self-contained, Native AOT, .NET Framework, and non-.NET targets.
+- CPU core-equivalent and machine-normalized usage.
+- Working set, private memory, thread count, percentiles, variation, and growth rate.
+- Pinned `dotnet-counters` and `dotnet-trace` diagnostic passes.
+- Runtime summaries for GC, allocation, ThreadPool, contention, assemblies, and JIT metrics.
+- Markdown, JSON, CSV, SVG, `.nettrace`, and GitHub job-summary output.
+- Independent iterations with deterministic target-process cleanup.
 
-## Planned reusable workflows
+## Security model
 
-### Repository application
+Performance workflows execute applications on a self-hosted machine. Both reusable workflows therefore:
 
-Builds an application from the caller repository and analyzes the published executable.
+- run only when the caller was started with `workflow_dispatch`;
+- require the fixed `self-hosted` and `metric-test` runner labels;
+- use the fixed `performance-lab` GitHub Environment;
+- request read-only repository permissions;
+- pass paths and arguments as data to `ProcessStartInfo` without shell interpolation.
+
+Configure required reviewers on the caller repository's `performance-lab` Environment. Use a dedicated, non-administrator runner account and never route pull-request workflows to a personal workstation.
+
+The external workflow additionally requires an allowed root. The executable must resolve inside that directory.
+
+## Runner labels
+
+Every performance runner needs the custom `metric-test` label and an operating-system label:
+
+```text
+self-hosted, metric-test, Windows
+self-hosted, metric-test, Linux
+self-hosted, metric-test, macOS
+```
+
+Desktop applications need a signed-in interactive desktop session. Windows Session 0, headless macOS agents, and Linux runners without a desktop session are not representative UI test environments.
+
+## Analyze a repository application
+
+The caller workflow must be manually dispatched. It publishes the requested project and analyzes the resulting executable on the selected runner.
 
 ```yaml
+name: Analyze repository performance
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
 jobs:
   performance:
     uses: NeverMorewd/DotNetPerformanceLab/.github/workflows/profile-repository.yml@v1
     with:
+      platform: Windows
       project-path: src/MyApplication.csproj
       runtime-identifier: win-x64
-      executable-path: publish/MyApplication.exe
+      executable-path: MyApplication.exe
+      report-label: My Application
+      self-contained: true
+      publish-aot: false
 ```
 
-### External executable
+Use `MyApplication` rather than `MyApplication.exe` for published Linux and macOS app hosts.
 
-Analyzes an executable that already exists on the selected self-hosted runner.
+## Analyze an external executable
+
+The target must already exist on the selected self-hosted runner. Keep external targets in a dedicated directory.
 
 ```yaml
+name: Analyze external performance
+
+on:
+  workflow_dispatch:
+    inputs:
+      executable-path:
+        description: Absolute executable path below C:\PerformanceTargets
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
 jobs:
   performance:
     uses: NeverMorewd/DotNetPerformanceLab/.github/workflows/profile-external.yml@v1
     with:
-      runner-labels: '["self-hosted","Windows","X64","metric-test"]'
-      executable-path: C:\PerformanceTargets\MyApplication\MyApplication.exe
+      platform: Windows
+      executable-path: ${{ inputs.executable-path }}
+      allowed-root: C:\PerformanceTargets
+      report-label: External application
 ```
 
-External executable analysis is intentionally restricted to manually dispatched caller workflows. Inputs are passed to the harness as data and are never interpolated into a shell command.
+Arguments use a JSON array and are never interpreted by a command shell:
 
-## Measurement model
+```yaml
+arguments-json: '["--profile","Performance Test","--duration","300"]'
+```
 
-Each iteration has isolated warm-up and measurement phases. The baseline pass samples the target process tree without attaching a managed profiler. Optional diagnostic passes collect runtime counters and traces separately.
+## Recommended measurement settings
 
-Primary report statistics include median, 95th percentile, maximum, final value, standard deviation, coefficient of variation, and memory growth rate. Reports include enough environment and toolchain metadata to determine whether two runs are meaningfully comparable.
+| Setting | Default |
+|---|---:|
+| Warm-up | 60 seconds |
+| Measurement | 300 seconds |
+| Sample interval | 1 second |
+| Cooldown | 10 seconds |
+| Iterations | 3 |
+| Runtime counters | Enabled, separate 30-second pass |
+| EventPipe trace | Disabled, optional separate 30-second pass |
 
-## Runner requirements
+Use the same physical runner, power profile, workload, application state, and settings when comparing versions. Cross-machine or cross-operating-system numbers are useful independently but should not be treated as direct regressions.
 
-Desktop applications require a signed-in interactive self-hosted runner on the target operating system. A Windows service running in Session 0 is not suitable for UI application analysis. Equivalent self-hosted runners are required for macOS and Linux desktop measurements.
+## Artifacts
 
-## Security
+Each run uploads:
 
-Self-hosted runners execute repository-controlled code on the host machine. Use dedicated non-administrator runner accounts, restrict workflow permissions, require manual dispatch or protected environments for external targets, and do not expose a personal workstation to untrusted pull requests.
+```text
+dotnet-performance-report/
+├── report.md
+├── summary.json
+├── samples-iteration-1.csv
+├── runtime-counters.json
+├── runtime.nettrace
+└── charts/
+    ├── cpu.svg
+    ├── working-set.svg
+    └── private-memory.svg
+```
+
+Unavailable EventPipe diagnostics do not invalidate baseline results. This allows the external workflow to measure .NET Framework and non-.NET processes while clearly reporting that managed diagnostics were unavailable.
+
+## Native AOT
+
+Native AOT requires EventPipe to use `dotnet-counters` and `dotnet-trace`:
+
+```xml
+<EventSourceSupport>true</EventSourceSupport>
+```
+
+Native AOT exposes only a subset of runtime events and does not support standard managed heap analysis. Baseline process metrics remain available regardless.
+
+## Versioning
+
+Production callers should use the moving major tag `v1` or pin a full commit SHA for maximum supply-chain stability. The `main` branch is for development and is not a stable interface.
 
 ## License
 

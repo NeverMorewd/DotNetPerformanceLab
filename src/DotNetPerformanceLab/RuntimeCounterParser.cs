@@ -7,14 +7,22 @@ public static class RuntimeCounterParser
     private static readonly string[] IncludedMetrics =
     [
         "dotnet.gc.heap.total_allocated",
+        "dotnet.gc.last_collection.heap.size",
+        "dotnet.gc.last_collection.memory.committed_size",
+        "dotnet.gc.heap.fragmentation.size",
         "dotnet.gc.pause.time",
         "dotnet.gc.collections",
         "dotnet.thread_pool.thread.count",
         "dotnet.thread_pool.queue.length",
         "dotnet.thread_pool.work_item.count",
         "dotnet.monitor.lock_contentions",
+        "dotnet.exception.count",
+        "dotnet.timer.count",
         "dotnet.jit.compilation.time",
         "dotnet.jit.compiled_methods",
+        "dotnet.jit.compiled_il.size",
+        "dotnet.process.cpu.time",
+        "dotnet.process.memory.working_set",
         "dotnet.assembly.count"
     ];
 

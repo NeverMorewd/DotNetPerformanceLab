@@ -7,10 +7,15 @@ public sealed class PerformanceRunner
 {
     private readonly ProcessSampler _sampler;
     private readonly DiagnosticCollector _diagnostics;
+    private readonly IHostMetricCollector _hostMetrics;
 
-    public PerformanceRunner(ProcessSampler? sampler = null, DiagnosticCollector? diagnostics = null)
+    public PerformanceRunner(
+        ProcessSampler? sampler = null,
+        DiagnosticCollector? diagnostics = null,
+        IHostMetricCollector? hostMetrics = null)
     {
-        _sampler = sampler ?? new ProcessSampler();
+        _hostMetrics = hostMetrics ?? HostMetricCollector.Create();
+        _sampler = sampler ?? new ProcessSampler(hostMetrics: _hostMetrics);
         _diagnostics = diagnostics ?? new DiagnosticCollector();
     }
 
@@ -36,7 +41,7 @@ public sealed class PerformanceRunner
             ? RuntimeCounterParser.Parse(Path.Combine(settings.OutputDirectory, diagnostics.Counters.File))
             : [];
         var result = new PerformanceRunResult(
-            SchemaVersion: 1,
+            SchemaVersion: 2,
             TargetPath: settings.TargetPath,
             ReportLabel: settings.ReportLabel,
             Settings: new RunSettingsSnapshot(
@@ -54,7 +59,8 @@ public sealed class PerformanceRunner
             Counters: diagnostics.Counters,
             Trace: diagnostics.Trace,
             RuntimeMetrics: runtimeMetrics,
-            GeneratedUtc: DateTimeOffset.UtcNow);
+            GeneratedUtc: DateTimeOffset.UtcNow,
+            Capabilities: [_hostMetrics.Capability]);
 
         await WriteOutputsAsync(settings.OutputDirectory, result, cancellationToken).ConfigureAwait(false);
         return result;
@@ -90,6 +96,11 @@ public sealed class PerformanceRunner
             result,
             MarkdownReportTarget.DownloadableArtifact,
             cancellationToken).ConfigureAwait(false);
+        var metrics = result.Iterations.SelectMany(iteration => iteration.Metrics ?? []).ToArray();
+        await using (var metricsStream = File.Create(Path.Combine(outputDirectory, "metrics.json")))
+        {
+            await JsonSerializer.SerializeAsync(metricsStream, metrics, LabJsonContext.Default.IReadOnlyListMetricSample, cancellationToken).ConfigureAwait(false);
+        }
         await MarkdownReport.WriteAsync(
             Path.Combine(outputDirectory, "job-summary.md"),
             result,
@@ -100,6 +111,11 @@ public sealed class PerformanceRunner
         await SvgChart.WriteAsync(Path.Combine(chartDirectory, "cpu.svg"), "CPU core equivalent", "%", chartSamples, sample => sample.CpuCorePercent, cancellationToken).ConfigureAwait(false);
         await SvgChart.WriteAsync(Path.Combine(chartDirectory, "working-set.svg"), "Working set", "MB", chartSamples, sample => sample.WorkingSetBytes / 1024d / 1024d, cancellationToken).ConfigureAwait(false);
         await SvgChart.WriteAsync(Path.Combine(chartDirectory, "private-memory.svg"), "Private memory", "MB", chartSamples, sample => sample.PrivateMemoryBytes / 1024d / 1024d, cancellationToken).ConfigureAwait(false);
+        await SvgChart.WriteAsync(Path.Combine(chartDirectory, "host-cpu.svg"), "Host CPU", "%", chartSamples, sample => sample.Host?.CpuUsagePercent, cancellationToken).ConfigureAwait(false);
+        await SvgChart.WriteAsync(Path.Combine(chartDirectory, "host-memory.svg"), "Host memory used", "MB", chartSamples, sample =>
+            sample.Host is { TotalMemoryBytes: { } total, AvailableMemoryBytes: { } available }
+                ? (total - available) / 1024d / 1024d
+                : null, cancellationToken).ConfigureAwait(false);
     }
 
     private static IReadOnlyList<ProcessSample> CreateChartTimeline(IReadOnlyList<IterationResult> iterations)

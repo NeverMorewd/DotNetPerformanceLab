@@ -12,18 +12,21 @@ public sealed class RuntimeCounterParserTests : IDisposable
               "Events": [
                 { "name": "dotnet.gc.heap.total_allocated (By / 1 sec)", "tags": "", "value": 1048576 },
                 { "name": "dotnet.gc.heap.total_allocated (By / 1 sec)", "tags": "", "value": 2097152 },
-                { "name": "dotnet.process.memory.working_set (By)", "tags": "", "value": 999 }
+                { "name": "dotnet.process.memory.working_set (By)", "tags": "", "value": 999 },
+                { "name": "custom.unconfigured.metric", "tags": "", "value": 1 }
               ]
             }
             """);
 
         var result = RuntimeCounterParser.Parse(_path);
 
-        var metric = Assert.Single(result);
+        Assert.Equal(2, result.Count);
+        var metric = Assert.Single(result, item => item.Name == "dotnet.gc.heap.total_allocated");
         Assert.Equal("dotnet.gc.heap.total_allocated", metric.Name);
         Assert.Equal("MB/s", metric.Unit);
         Assert.Equal(1572864, metric.Mean);
         Assert.Equal(2, metric.Samples);
+        Assert.Contains(result, item => item.Name == "dotnet.process.memory.working_set" && item.Unit == "MB");
     }
 
     public void Dispose()

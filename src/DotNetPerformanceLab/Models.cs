@@ -29,7 +29,14 @@ public sealed record ProcessSample(
     double? CpuMachinePercent,
     long WorkingSetBytes,
     long? PrivateMemoryBytes,
-    int? ThreadCount);
+    int? ThreadCount,
+    double? CpuUserPercent = null,
+    double? CpuSystemPercent = null,
+    long? VirtualMemoryBytes = null,
+    long? PeakWorkingSetBytes = null,
+    long? PeakPagedMemoryBytes = null,
+    int? HandleCount = null,
+    HostSnapshot? Host = null);
 
 public sealed record MetricStatistics(
     double Minimum,
@@ -55,7 +62,8 @@ public sealed record IterationResult(
     MetricStatistics? CpuMachinePercent,
     MetricStatistics WorkingSetBytes,
     MetricStatistics? PrivateMemoryBytes,
-    string SamplesFile);
+    string SamplesFile,
+    IReadOnlyList<MetricSample>? Metrics = null);
 
 public sealed record DiagnosticArtifact(
     string Name,
@@ -96,7 +104,8 @@ public sealed record PerformanceRunResult(
     DiagnosticArtifact Counters,
     DiagnosticArtifact Trace,
     IReadOnlyList<RuntimeMetricSummary> RuntimeMetrics,
-    DateTimeOffset GeneratedUtc);
+    DateTimeOffset GeneratedUtc,
+    IReadOnlyList<CollectorCapability>? Capabilities = null);
 
 public sealed record RunSettingsSnapshot(
     int WarmupSeconds,
@@ -110,5 +119,6 @@ public sealed record RunSettingsSnapshot(
     int TraceDurationSeconds);
 
 [JsonSerializable(typeof(PerformanceRunResult))]
+[JsonSerializable(typeof(IReadOnlyList<MetricSample>))]
 [JsonSerializable(typeof(IReadOnlyList<string>))]
 internal sealed partial class LabJsonContext : JsonSerializerContext;

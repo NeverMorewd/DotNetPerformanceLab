@@ -10,6 +10,8 @@ public sealed class MarkdownReportTests
         Assert.Contains("![CPU usage](charts/cpu.svg)", report, StringComparison.Ordinal);
         Assert.Contains("![Working set](charts/working-set.svg)", report, StringComparison.Ordinal);
         Assert.Contains("![Private memory](charts/private-memory.svg)", report, StringComparison.Ordinal);
+        Assert.Contains("![Host CPU](charts/host-cpu.svg)", report, StringComparison.Ordinal);
+        Assert.Contains("![Host memory](charts/host-memory.svg)", report, StringComparison.Ordinal);
     }
 
     [Fact]

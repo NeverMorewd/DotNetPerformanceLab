@@ -19,7 +19,11 @@ public sealed record RunSettings(
     TimeSpan TraceDuration,
     bool FailOnTargetExit,
     IReadOnlyList<string> AllowedRoots,
-    string ToolDirectory);
+    string ToolDirectory,
+    IReadOnlyList<string>? Meters = null,
+    Uri? LiveEndpoint = null,
+    string? LiveToken = null,
+    string? LiveRunId = null);
 
 public sealed record ProcessSample(
     int Iteration,
@@ -29,7 +33,18 @@ public sealed record ProcessSample(
     double? CpuMachinePercent,
     long WorkingSetBytes,
     long? PrivateMemoryBytes,
-    int? ThreadCount);
+    int? ThreadCount,
+    double? CpuUserPercent = null,
+    double? CpuSystemPercent = null,
+    long? VirtualMemoryBytes = null,
+    long? PeakWorkingSetBytes = null,
+    long? PeakPagedMemoryBytes = null,
+    int? HandleCount = null,
+    HostSnapshot? Host = null,
+    long? ReadOperationCount = null,
+    long? WriteOperationCount = null,
+    long? ReadBytes = null,
+    long? WriteBytes = null);
 
 public sealed record MetricStatistics(
     double Minimum,
@@ -55,7 +70,8 @@ public sealed record IterationResult(
     MetricStatistics? CpuMachinePercent,
     MetricStatistics WorkingSetBytes,
     MetricStatistics? PrivateMemoryBytes,
-    string SamplesFile);
+    string SamplesFile,
+    IReadOnlyList<MetricSample>? Metrics = null);
 
 public sealed record DiagnosticArtifact(
     string Name,
@@ -84,7 +100,14 @@ public sealed record EnvironmentSnapshot(
     string RunnerName,
     string RunnerOs,
     string RunnerArchitecture,
-    DateTimeOffset CapturedUtc);
+    DateTimeOffset CapturedUtc,
+    string? RuntimeIdentifier = null,
+    string? KernelVersion = null,
+    string? ProcessorModel = null,
+    int? PhysicalCores = null,
+    long? TotalMemoryBytes = null,
+    long? TotalSwapBytes = null,
+    bool? Containerized = null);
 
 public sealed record PerformanceRunResult(
     int SchemaVersion,
@@ -96,7 +119,9 @@ public sealed record PerformanceRunResult(
     DiagnosticArtifact Counters,
     DiagnosticArtifact Trace,
     IReadOnlyList<RuntimeMetricSummary> RuntimeMetrics,
-    DateTimeOffset GeneratedUtc);
+    DateTimeOffset GeneratedUtc,
+    IReadOnlyList<CollectorCapability>? Capabilities = null,
+    IReadOnlyList<MetricSample>? RuntimeSamples = null);
 
 public sealed record RunSettingsSnapshot(
     int WarmupSeconds,
@@ -107,8 +132,12 @@ public sealed record RunSettingsSnapshot(
     bool CollectCounters,
     int CounterDurationSeconds,
     bool CollectTrace,
-    int TraceDurationSeconds);
+    int TraceDurationSeconds,
+    IReadOnlyList<string>? Meters = null);
 
 [JsonSerializable(typeof(PerformanceRunResult))]
+[JsonSerializable(typeof(IReadOnlyList<MetricSample>))]
+[JsonSerializable(typeof(WebReportPayload))]
 [JsonSerializable(typeof(IReadOnlyList<string>))]
+[JsonSerializable(typeof(LiveMetricBatch))]
 internal sealed partial class LabJsonContext : JsonSerializerContext;

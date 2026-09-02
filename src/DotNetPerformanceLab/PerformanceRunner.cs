@@ -7,10 +7,18 @@ public sealed class PerformanceRunner
 {
     private readonly ProcessSampler _sampler;
     private readonly DiagnosticCollector _diagnostics;
+    private readonly IHostMetricCollector _hostMetrics;
+    private readonly IProcessIoCollector _processIo;
 
-    public PerformanceRunner(ProcessSampler? sampler = null, DiagnosticCollector? diagnostics = null)
+    public PerformanceRunner(
+        ProcessSampler? sampler = null,
+        DiagnosticCollector? diagnostics = null,
+        IHostMetricCollector? hostMetrics = null,
+        IProcessIoCollector? processIo = null)
     {
-        _sampler = sampler ?? new ProcessSampler();
+        _hostMetrics = hostMetrics ?? HostMetricCollector.Create();
+        _processIo = processIo ?? ProcessIoCollector.Create();
+        _sampler = sampler ?? new ProcessSampler(hostMetrics: _hostMetrics, processIo: _processIo);
         _diagnostics = diagnostics ?? new DiagnosticCollector();
     }
 
@@ -19,11 +27,12 @@ public sealed class PerformanceRunner
         settings = TargetValidator.Validate(settings);
         PrepareOutputDirectory(settings.OutputDirectory);
         var iterations = new List<IterationResult>(settings.Iterations);
+        await using var livePublisher = LiveMetricPublisher.Create(settings);
 
         for (var iteration = 1; iteration <= settings.Iterations; iteration++)
         {
             Console.WriteLine($"Starting baseline iteration {iteration} of {settings.Iterations}.");
-            iterations.Add(await _sampler.RunIterationAsync(settings, iteration, cancellationToken).ConfigureAwait(false));
+            iterations.Add(await _sampler.RunIterationAsync(settings, iteration, cancellationToken, livePublisher).ConfigureAwait(false));
 
             if (iteration < settings.Iterations && settings.Cooldown > TimeSpan.Zero)
             {
@@ -35,8 +44,12 @@ public sealed class PerformanceRunner
         var runtimeMetrics = diagnostics.Counters.Collected && diagnostics.Counters.File is not null
             ? RuntimeCounterParser.Parse(Path.Combine(settings.OutputDirectory, diagnostics.Counters.File))
             : [];
+        var runtimeSamples = diagnostics.Counters.Collected && diagnostics.Counters.File is not null
+            ? RuntimeCounterParser.ParseSamples(Path.Combine(settings.OutputDirectory, diagnostics.Counters.File))
+            : [];
+        if (runtimeSamples.Count > 0) livePublisher.TryPublish(runtimeSamples);
         var result = new PerformanceRunResult(
-            SchemaVersion: 1,
+            SchemaVersion: 3,
             TargetPath: settings.TargetPath,
             ReportLabel: settings.ReportLabel,
             Settings: new RunSettingsSnapshot(
@@ -48,13 +61,26 @@ public sealed class PerformanceRunner
                 settings.CollectCounters,
                 (int)settings.CounterDuration.TotalSeconds,
                 settings.CollectTrace,
-                (int)settings.TraceDuration.TotalSeconds),
-            Environment: CaptureEnvironment(),
+                (int)settings.TraceDuration.TotalSeconds,
+                settings.Meters),
+            Environment: SystemInformationCollector.Capture(_hostMetrics),
             Iterations: iterations,
             Counters: diagnostics.Counters,
             Trace: diagnostics.Trace,
             RuntimeMetrics: runtimeMetrics,
-            GeneratedUtc: DateTimeOffset.UtcNow);
+            GeneratedUtc: DateTimeOffset.UtcNow,
+            Capabilities:
+            [
+                _hostMetrics.Capability,
+                _processIo.Capability,
+                new CollectorCapability(
+                    "System.Runtime diagnostics",
+                    MetricScope.Runtime,
+                    diagnostics.Counters.Collected ? MetricAvailability.Available : MetricAvailability.Unavailable,
+                    runtimeSamples.Select(sample => sample.Name).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray(),
+                    diagnostics.Counters.Message)
+            ],
+            RuntimeSamples: runtimeSamples);
 
         await WriteOutputsAsync(settings.OutputDirectory, result, cancellationToken).ConfigureAwait(false);
         return result;
@@ -90,6 +116,12 @@ public sealed class PerformanceRunner
             result,
             MarkdownReportTarget.DownloadableArtifact,
             cancellationToken).ConfigureAwait(false);
+        var metrics = result.Iterations.SelectMany(iteration => iteration.Metrics ?? []).Concat(result.RuntimeSamples ?? []).ToArray();
+        await using (var metricsStream = File.Create(Path.Combine(outputDirectory, "metrics.json")))
+        {
+            await JsonSerializer.SerializeAsync(metricsStream, metrics, LabJsonContext.Default.IReadOnlyListMetricSample, cancellationToken).ConfigureAwait(false);
+        }
+        await PlotlyReportExporter.WriteAsync(outputDirectory, result, metrics, cancellationToken).ConfigureAwait(false);
         await MarkdownReport.WriteAsync(
             Path.Combine(outputDirectory, "job-summary.md"),
             result,
@@ -100,6 +132,11 @@ public sealed class PerformanceRunner
         await SvgChart.WriteAsync(Path.Combine(chartDirectory, "cpu.svg"), "CPU core equivalent", "%", chartSamples, sample => sample.CpuCorePercent, cancellationToken).ConfigureAwait(false);
         await SvgChart.WriteAsync(Path.Combine(chartDirectory, "working-set.svg"), "Working set", "MB", chartSamples, sample => sample.WorkingSetBytes / 1024d / 1024d, cancellationToken).ConfigureAwait(false);
         await SvgChart.WriteAsync(Path.Combine(chartDirectory, "private-memory.svg"), "Private memory", "MB", chartSamples, sample => sample.PrivateMemoryBytes / 1024d / 1024d, cancellationToken).ConfigureAwait(false);
+        await SvgChart.WriteAsync(Path.Combine(chartDirectory, "host-cpu.svg"), "Host CPU", "%", chartSamples, sample => sample.Host?.CpuUsagePercent, cancellationToken).ConfigureAwait(false);
+        await SvgChart.WriteAsync(Path.Combine(chartDirectory, "host-memory.svg"), "Host memory used", "MB", chartSamples, sample =>
+            sample.Host is { TotalMemoryBytes: { } total, AvailableMemoryBytes: { } available }
+                ? (total - available) / 1024d / 1024d
+                : null, cancellationToken).ConfigureAwait(false);
     }
 
     private static IReadOnlyList<ProcessSample> CreateChartTimeline(IReadOnlyList<IterationResult> iterations)
@@ -122,15 +159,4 @@ public sealed class PerformanceRunner
         return samples;
     }
 
-    private static EnvironmentSnapshot CaptureEnvironment() => new(
-        RuntimeInformation.OSDescription,
-        RuntimeInformation.FrameworkDescription,
-        RuntimeInformation.OSArchitecture.ToString(),
-        RuntimeInformation.ProcessArchitecture.ToString(),
-        Environment.ProcessorCount,
-        Environment.MachineName,
-        Environment.GetEnvironmentVariable("RUNNER_NAME") ?? "Local",
-        Environment.GetEnvironmentVariable("RUNNER_OS") ?? RuntimeInformation.OSDescription,
-        Environment.GetEnvironmentVariable("RUNNER_ARCH") ?? RuntimeInformation.OSArchitecture.ToString(),
-        DateTimeOffset.UtcNow);
 }

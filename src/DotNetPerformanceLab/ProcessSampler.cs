@@ -1,20 +1,26 @@
 using System.Diagnostics;
+using System.Collections.Frozen;
 
 namespace DotNetPerformanceLab;
 
 public sealed class ProcessSampler
 {
     private readonly TimeProvider _timeProvider;
+    private readonly IHostMetricCollector _hostMetrics;
+    private readonly IProcessIoCollector _processIo;
 
-    public ProcessSampler(TimeProvider? timeProvider = null)
+    public ProcessSampler(TimeProvider? timeProvider = null, IHostMetricCollector? hostMetrics = null, IProcessIoCollector? processIo = null)
     {
         _timeProvider = timeProvider ?? TimeProvider.System;
+        _hostMetrics = hostMetrics ?? HostMetricCollector.Create();
+        _processIo = processIo ?? ProcessIoCollector.Create();
     }
 
     public async Task<IterationResult> RunIterationAsync(
         RunSettings settings,
         int iteration,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        ILiveMetricPublisher? livePublisher = null)
     {
         await using var target = TargetProcess.Start(settings);
         var process = target.Process;
@@ -30,8 +36,12 @@ public sealed class ProcessSampler
         var stopwatch = Stopwatch.StartNew();
         var samples = new List<ProcessSample>();
         var previousCpu = process.TotalProcessorTime;
+        var previousUserCpu = ReadTime(process, static item => item.UserProcessorTime);
+        var previousSystemCpu = ReadTime(process, static item => item.PrivilegedProcessorTime);
         var previousElapsed = stopwatch.Elapsed;
         var unexpectedExit = false;
+
+        _hostMetrics.Capture();
 
         while (stopwatch.Elapsed < settings.Measurement)
         {
@@ -51,6 +61,13 @@ public sealed class ProcessSampler
                 ? null
                 : Math.Max(0, cpuDelta.TotalMilliseconds / elapsedDelta.TotalMilliseconds * 100);
 
+            var userCpu = ReadTime(process, static item => item.UserProcessorTime);
+            var systemCpu = ReadTime(process, static item => item.PrivilegedProcessorTime);
+            var userPercent = Percentage(userCpu, previousUserCpu, elapsedDelta);
+            var systemPercent = Percentage(systemCpu, previousSystemCpu, elapsedDelta);
+            var host = _hostMetrics.Capture();
+            var io = _processIo.Capture(process);
+
             samples.Add(new ProcessSample(
                 iteration,
                 _timeProvider.GetUtcNow(),
@@ -59,9 +76,23 @@ public sealed class ProcessSampler
                 corePercent / Environment.ProcessorCount,
                 process.WorkingSet64,
                 ReadPrivateMemory(process),
-                ReadThreadCount(process)));
+                ReadThreadCount(process),
+                userPercent,
+                systemPercent,
+                ReadLong(process, static item => item.VirtualMemorySize64),
+                ReadLong(process, static item => item.PeakWorkingSet64),
+                ReadLong(process, static item => item.PeakPagedMemorySize64),
+                ReadInt(process, static item => item.HandleCount),
+                host,
+                io.ReadOperationCount,
+                io.WriteOperationCount,
+                io.ReadBytes,
+                io.WriteBytes));
+            livePublisher?.TryPublish(CreateMetricSamples([samples[^1]]));
 
             previousCpu = totalCpu;
+            previousUserCpu = userCpu;
+            previousSystemCpu = systemCpu;
             previousElapsed = elapsed;
         }
 
@@ -127,7 +158,112 @@ public sealed class ProcessSampler
             cpuMachine.Length == 0 ? null : Statistics.Calculate(cpuMachine),
             Statistics.Calculate(workingSet),
             privateMemory.Length == 0 ? null : Statistics.Calculate(privateMemory),
-            samplesFile);
+            samplesFile,
+            CreateMetricSamples(samples));
+    }
+
+    private static IReadOnlyList<MetricSample> CreateMetricSamples(IReadOnlyList<ProcessSample> samples)
+    {
+        var metrics = new List<MetricSample>(samples.Count * 18);
+        foreach (var sample in samples)
+        {
+            Add(metrics, sample, MetricScope.Process, MetricNames.ProcessCpuCore, sample.CpuCorePercent, "%");
+            Add(metrics, sample, MetricScope.Process, MetricNames.ProcessCpuMachine, sample.CpuMachinePercent, "%");
+            Add(metrics, sample, MetricScope.Process, MetricNames.ProcessCpuUser, sample.CpuUserPercent, "%");
+            Add(metrics, sample, MetricScope.Process, MetricNames.ProcessCpuSystem, sample.CpuSystemPercent, "%");
+            Add(metrics, sample, MetricScope.Process, MetricNames.ProcessMemoryWorkingSet, sample.WorkingSetBytes, "By");
+            Add(metrics, sample, MetricScope.Process, MetricNames.ProcessMemoryPrivate, sample.PrivateMemoryBytes, "By");
+            Add(metrics, sample, MetricScope.Process, MetricNames.ProcessMemoryVirtual, sample.VirtualMemoryBytes, "By");
+            Add(metrics, sample, MetricScope.Process, MetricNames.ProcessThreads, sample.ThreadCount, "{thread}");
+            Add(metrics, sample, MetricScope.Process, MetricNames.ProcessHandles, sample.HandleCount, "{handle}");
+            Add(metrics, sample, MetricScope.Process, MetricNames.ProcessIoReadOperations, sample.ReadOperationCount, "{operation}");
+            Add(metrics, sample, MetricScope.Process, MetricNames.ProcessIoWriteOperations, sample.WriteOperationCount, "{operation}");
+            Add(metrics, sample, MetricScope.Process, MetricNames.ProcessIoReadBytes, sample.ReadBytes, "By");
+            Add(metrics, sample, MetricScope.Process, MetricNames.ProcessIoWriteBytes, sample.WriteBytes, "By");
+
+            if (sample.Host is not { } host)
+            {
+                continue;
+            }
+
+            Add(metrics, sample, MetricScope.Host, MetricNames.HostCpuUsage, host.CpuUsagePercent, "%");
+            Add(metrics, sample, MetricScope.Host, MetricNames.HostMemoryTotal, host.TotalMemoryBytes, "By");
+            Add(metrics, sample, MetricScope.Host, MetricNames.HostMemoryAvailable, host.AvailableMemoryBytes, "By");
+            Add(metrics, sample, MetricScope.Host, MetricNames.HostMemoryUsed,
+                host.TotalMemoryBytes.HasValue && host.AvailableMemoryBytes.HasValue ? host.TotalMemoryBytes - host.AvailableMemoryBytes : null, "By");
+            Add(metrics, sample, MetricScope.Host, MetricNames.HostSwapTotal, host.TotalSwapBytes, "By");
+            Add(metrics, sample, MetricScope.Host, MetricNames.HostSwapUsed, host.UsedSwapBytes, "By");
+            Add(metrics, sample, MetricScope.Host, MetricNames.HostNetworkReceive, host.NetworkReceivedBytes, "By");
+            Add(metrics, sample, MetricScope.Host, MetricNames.HostNetworkTransmit, host.NetworkTransmittedBytes, "By");
+            Add(metrics, sample, MetricScope.Host, MetricNames.HostProcessCount, host.ProcessCount, "{process}");
+            Add(metrics, sample, MetricScope.Host, MetricNames.HostLoadOne, host.LoadAverageOneMinute, "1");
+            Add(metrics, sample, MetricScope.Host, MetricNames.HostLoadFive, host.LoadAverageFiveMinutes, "1");
+            Add(metrics, sample, MetricScope.Host, MetricNames.HostLoadFifteen, host.LoadAverageFifteenMinutes, "1");
+        }
+
+        return metrics;
+    }
+
+    private static void Add(
+        ICollection<MetricSample> metrics,
+        ProcessSample sample,
+        MetricScope scope,
+        string name,
+        double? value,
+        string unit)
+    {
+        metrics.Add(new MetricSample(
+            sample.Iteration,
+            sample.TimestampUtc,
+            sample.ElapsedSeconds,
+            scope,
+            name,
+            value,
+            unit,
+            FrozenDictionary<string, string>.Empty,
+            value.HasValue ? MetricAvailability.Available : MetricAvailability.Unavailable,
+            value.HasValue ? null : "The metric was unavailable for this sample."));
+    }
+
+    private static double? Percentage(TimeSpan? current, TimeSpan? previous, TimeSpan elapsed) =>
+        current.HasValue && previous.HasValue && elapsed.TotalMilliseconds > 0
+            ? Math.Max(0, (current.Value - previous.Value).TotalMilliseconds / elapsed.TotalMilliseconds * 100)
+            : null;
+
+    private static TimeSpan? ReadTime(Process process, Func<Process, TimeSpan> read)
+    {
+        try
+        {
+            return read(process);
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or PlatformNotSupportedException)
+        {
+            return null;
+        }
+    }
+
+    private static long? ReadLong(Process process, Func<Process, long> read)
+    {
+        try
+        {
+            return read(process);
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or PlatformNotSupportedException)
+        {
+            return null;
+        }
+    }
+
+    private static int? ReadInt(Process process, Func<Process, int> read)
+    {
+        try
+        {
+            return read(process);
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or PlatformNotSupportedException)
+        {
+            return null;
+        }
     }
 
     private async Task DelayWhileRunningAsync(Process process, TimeSpan duration, CancellationToken cancellationToken)

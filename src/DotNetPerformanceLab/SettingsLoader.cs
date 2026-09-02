@@ -20,6 +20,7 @@ public static class SettingsLoader
             allowedRoots.Add(singleAllowedRoot.Trim());
         }
 
+        var liveEndpoint = OptionalUri(read("DPL_LIVE_ENDPOINT"), "DPL_LIVE_ENDPOINT");
         return new RunSettings(
             TargetPath: target,
             Arguments: arguments,
@@ -37,7 +38,15 @@ public static class SettingsLoader
             TraceDuration: Seconds(read, "DPL_TRACE_DURATION_SECONDS", 30, 5, 3600),
             FailOnTargetExit: Boolean(read, "DPL_FAIL_ON_TARGET_EXIT", true),
             AllowedRoots: allowedRoots,
-            ToolDirectory: Get(read, "DPL_TOOL_DIRECTORY", Environment.CurrentDirectory));
+            ToolDirectory: Get(read, "DPL_TOOL_DIRECTORY", Environment.CurrentDirectory),
+            Meters: ParseStringArray(read("DPL_METERS_JSON"), "DPL_METERS_JSON")
+                .Where(meter => !string.IsNullOrWhiteSpace(meter))
+                .Select(meter => meter.Trim())
+                .Distinct(StringComparer.Ordinal)
+                .ToArray(),
+            LiveEndpoint: liveEndpoint,
+            LiveToken: liveEndpoint is null ? null : Require(read, "DPL_LIVE_TOKEN"),
+            LiveRunId: liveEndpoint is null ? null : Get(read, "DPL_LIVE_RUN_ID", Guid.NewGuid().ToString("N")));
     }
 
     private static string Require(Func<string, string?> read, string name) =>
@@ -98,5 +107,16 @@ public static class SettingsLoader
         {
             throw new ArgumentException($"{name} must be a JSON array of strings.", name, exception);
         }
+    }
+
+    private static Uri? OptionalUri(string? value, string name)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        if (!Uri.TryCreate(value.Trim(), UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps)
+        {
+            throw new ArgumentException($"{name} must be an absolute HTTPS URL.", name);
+        }
+
+        return uri;
     }
 }

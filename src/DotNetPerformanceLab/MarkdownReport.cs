@@ -18,6 +18,10 @@ public static class MarkdownReport
         builder.Append("**Target:** ").Append(Escape(result.ReportLabel)).AppendLine("  ");
         builder.Append("**Executable:** `").Append(EscapeCode(result.TargetPath)).AppendLine("`  ");
         builder.Append("**Generated:** ").Append(result.GeneratedUtc.ToString("u", CultureInfo.InvariantCulture)).AppendLine().AppendLine();
+        if (target == MarkdownReportTarget.DownloadableArtifact)
+        {
+            builder.AppendLine("[Open the interactive Plotly report](web-report/index.html)").AppendLine();
+        }
 
         builder.AppendLine("## Executive summary").AppendLine();
         builder.AppendLine("| Metric | Median | P95 | Maximum | Final | Growth/min |");
@@ -26,6 +30,8 @@ public static class MarkdownReport
         AppendAggregateRow(builder, "CPU, machine normalized", result.Iterations.Select(item => item.CpuMachinePercent), "%", 2);
         AppendAggregateRow(builder, "Working set", result.Iterations.Select(item => item.WorkingSetBytes), " MB", 2, BytesPerMegabyte);
         AppendAggregateRow(builder, "Private memory", result.Iterations.Select(item => item.PrivateMemoryBytes), " MB", 2, BytesPerMegabyte);
+        AppendSampleAggregateRow(builder, "Host CPU", result, MetricNames.HostCpuUsage, "%", 1);
+        AppendSampleAggregateRow(builder, "Host memory used", result, MetricNames.HostMemoryUsed, " MB", 2, BytesPerMegabyte);
         builder.AppendLine();
 
         builder.AppendLine("CPU core equivalent can exceed 100% when the process uses more than one logical processor. Machine-normalized CPU divides this value by the runner logical processor count.").AppendLine();
@@ -52,10 +58,28 @@ public static class MarkdownReport
         AppendProperty(builder, "OS architecture", result.Environment.Architecture);
         AppendProperty(builder, "Process architecture", result.Environment.ProcessArchitecture);
         AppendProperty(builder, "Logical processors", result.Environment.LogicalProcessors.ToString(CultureInfo.InvariantCulture));
+        AppendProperty(builder, "Physical cores", result.Environment.PhysicalCores?.ToString(CultureInfo.InvariantCulture) ?? "Unavailable");
+        AppendProperty(builder, "Processor model", result.Environment.ProcessorModel ?? "Unavailable");
+        AppendProperty(builder, "Runtime identifier", result.Environment.RuntimeIdentifier ?? "Unavailable");
+        AppendProperty(builder, "Kernel", result.Environment.KernelVersion ?? "Unavailable");
+        AppendProperty(builder, "Physical memory", FormatBytes(result.Environment.TotalMemoryBytes));
+        AppendProperty(builder, "Swap", FormatBytes(result.Environment.TotalSwapBytes));
+        AppendProperty(builder, "Containerized", result.Environment.Containerized?.ToString() ?? "Unknown");
         AppendProperty(builder, "Machine", result.Environment.MachineName);
         AppendProperty(builder, "Runner", result.Environment.RunnerName);
         AppendProperty(builder, "Runner OS", result.Environment.RunnerOs);
         AppendProperty(builder, "Runner architecture", result.Environment.RunnerArchitecture);
+
+        builder.AppendLine().AppendLine("### Collector capabilities").AppendLine();
+        builder.AppendLine("| Collector | Scope | Status | Reason |").AppendLine("|---|---|---|---|");
+        foreach (var capability in result.Capabilities ?? [])
+        {
+            builder.Append("| ").Append(Escape(capability.Collector))
+                .Append(" | ").Append(capability.Scope)
+                .Append(" | ").Append(capability.Availability)
+                .Append(" | ").Append(Escape(capability.Reason ?? string.Empty))
+                .AppendLine(" |");
+        }
 
         builder.AppendLine().AppendLine("## Test configuration").AppendLine();
         builder.AppendLine("| Property | Value |").AppendLine("|---|---:|");
@@ -93,6 +117,8 @@ public static class MarkdownReport
             builder.AppendLine("![CPU usage](charts/cpu.svg)").AppendLine();
             builder.AppendLine("![Working set](charts/working-set.svg)").AppendLine();
             builder.AppendLine("![Private memory](charts/private-memory.svg)").AppendLine();
+            builder.AppendLine("![Host CPU](charts/host-cpu.svg)").AppendLine();
+            builder.AppendLine("![Host memory](charts/host-memory.svg)").AppendLine();
         }
         else
         {
@@ -107,6 +133,10 @@ public static class MarkdownReport
 
         await File.WriteAllTextAsync(path, builder.ToString(), new UTF8Encoding(false), cancellationToken).ConfigureAwait(false);
     }
+
+    private static string FormatBytes(long? value) => value.HasValue
+        ? $"{value.Value / BytesPerMegabyte:0.##} MB"
+        : "Unavailable";
 
     private static void AppendAggregateRow(
         StringBuilder builder,
@@ -130,6 +160,30 @@ public static class MarkdownReport
             .Append(" | ").Append(Format(Statistics.Percentile(items.Select(item => item.Final).Order().ToArray(), 0.5) / divisor, suffix, decimals))
             .Append(" | ").Append(Format(Statistics.Percentile(items.Select(item => item.GrowthPerMinute).Order().ToArray(), 0.5) / divisor, suffix, decimals))
             .AppendLine(" |");
+    }
+
+    private static void AppendSampleAggregateRow(
+        StringBuilder builder,
+        string label,
+        PerformanceRunResult result,
+        string metricName,
+        string suffix,
+        int decimals,
+        double divisor = 1)
+    {
+        var values = result.Iterations
+            .SelectMany(iteration => iteration.Metrics ?? [])
+            .Where(metric => metric.Name == metricName && metric.Value.HasValue)
+            .Select(metric => (metric.ElapsedSeconds, metric.Value!.Value))
+            .ToArray();
+        if (values.Length == 0)
+        {
+            builder.Append("| ").Append(label).AppendLine(" | N/A | N/A | N/A | N/A | N/A |");
+            return;
+        }
+
+        var statistics = Statistics.Calculate(values);
+        AppendAggregateRow(builder, label, [statistics], suffix, decimals, divisor);
     }
 
     private static void AppendProperty(StringBuilder builder, string name, string value) =>

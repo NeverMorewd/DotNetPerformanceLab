@@ -2,7 +2,7 @@
 
 Reusable GitHub Actions workflows and a cross-platform performance harness for measuring .NET applications on self-hosted runners.
 
-The lab generates a Markdown report, raw JSON and CSV samples, SVG charts, runtime counters, and optional EventPipe traces. Baseline process sampling is isolated from diagnostic collection so profiler overhead does not contaminate the primary CPU and memory measurements.
+The lab generates an offline interactive Plotly report, Markdown summaries, normalized JSON and CSV samples, SVG charts, runtime counters, and optional EventPipe traces. Baseline process and host sampling is isolated from diagnostic collection so profiler overhead does not contaminate the primary CPU and memory measurements.
 
 ## Capabilities
 
@@ -10,9 +10,14 @@ The lab generates a Markdown report, raw JSON and CSV samples, SVG charts, runti
 - Framework-dependent, self-contained, Native AOT, .NET Framework, and non-.NET targets.
 - CPU core-equivalent and machine-normalized usage.
 - Working set, private memory, thread count, percentiles, variation, and growth rate.
+- Synchronized host CPU, physical memory, swap, network, process-count, and load-average measurements where supported.
+- A versioned normalized metric model with explicit availability and collector capabilities.
 - Pinned `dotnet-counters` and `dotnet-trace` diagnostic passes.
 - Runtime summaries for GC, allocation, ThreadPool, contention, assemblies, and JIT metrics.
+- Optional application and framework meters from `System.Diagnostics.Metrics`, including ASP.NET Core, System.Net, and application-defined instruments.
 - Markdown, JSON, CSV, SVG, `.nettrace`, and GitHub job-summary output.
+- Offline Plotly.js charts with hover details, zooming, iteration selection, and SVG export.
+- A reusable GitHub Pages history site assembled from unexpired report artifacts.
 - Independent iterations with deterministic target-process cleanup.
 
 ## Security model
@@ -56,7 +61,7 @@ permissions:
 
 jobs:
   performance:
-    uses: NeverMorewd/DotNetPerformanceLab/.github/workflows/profile-repository.yml@v1
+    uses: NeverMorewd/DotNetPerformanceLab/.github/workflows/profile-repository.yml@v2
     with:
       platform: Windows
       project-path: src/MyApplication.csproj
@@ -65,6 +70,7 @@ jobs:
       report-label: My Application
       self-contained: true
       publish-aot: false
+      meters-json: '["Microsoft.AspNetCore.Hosting","System.Net.Http"]'
 ```
 
 Use `MyApplication` rather than `MyApplication.exe` for published Linux and macOS app hosts.
@@ -89,7 +95,7 @@ permissions:
 
 jobs:
   performance:
-    uses: NeverMorewd/DotNetPerformanceLab/.github/workflows/profile-external.yml@v1
+    uses: NeverMorewd/DotNetPerformanceLab/.github/workflows/profile-external.yml@v2
     with:
       platform: Windows
       executable-path: ${{ inputs.executable-path }}
@@ -124,17 +130,84 @@ Each run uploads:
 ```text
 dotnet-performance-report/
 ├── report.md
+├── job-summary.md
 ├── summary.json
+├── metrics.json
 ├── samples-iteration-1.csv
 ├── runtime-counters.json
 ├── runtime.nettrace
+├── web-report/
+│   ├── index.html
+│   └── assets/
+│       ├── plotly-basic.min.js
+│       ├── dashboard.js
+│       ├── dashboard.css
+│       └── data.js
 └── charts/
     ├── cpu.svg
     ├── working-set.svg
-    └── private-memory.svg
+    ├── private-memory.svg
+    ├── host-cpu.svg
+    └── host-memory.svg
 ```
 
+Run `npm ci --prefix web --ignore-scripts` before invoking the harness directly. Reusable workflows restore the pinned Plotly dependency automatically. The generated `web-report/index.html` works from an extracted artifact without a web server or network connection.
+
 Unavailable EventPipe diagnostics do not invalidate baseline results. This allows the external workflow to measure .NET Framework and non-.NET processes while clearly reporting that managed diagnostics were unavailable.
+
+## GitHub Pages history
+
+Enable GitHub Pages with **GitHub Actions** as its source in the caller repository, then add a deployment job after the profiling job. The site generator reads report artifacts through the GitHub API, publishes only artifacts that have not expired, and rebuilds the site from scratch on each deployment. Artifact retention therefore remains the single source of truth for report retention.
+
+```yaml
+permissions:
+  contents: read
+  actions: read
+  pages: write
+  id-token: write
+
+jobs:
+  performance:
+    uses: NeverMorewd/DotNetPerformanceLab/.github/workflows/profile-repository.yml@v2
+    with:
+      platform: Windows
+      project-path: src/MyApplication.csproj
+      runtime-identifier: win-x64
+      executable-path: MyApplication.exe
+      report-label: My Application
+
+  pages:
+    needs: performance
+    uses: NeverMorewd/DotNetPerformanceLab/.github/workflows/deploy-pages.yml@v2
+    with:
+      history-days: 30
+      maximum-runs: 50
+```
+
+Add a separate manually dispatched or scheduled caller when expired reports should disappear even when no new profile is produced:
+
+```yaml
+name: Refresh performance history
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 3 * * *'
+
+permissions:
+  contents: read
+  actions: read
+  pages: write
+  id-token: write
+
+jobs:
+  pages:
+    uses: NeverMorewd/DotNetPerformanceLab/.github/workflows/deploy-pages.yml@v2
+```
+
+GitHub Pages is a static host and is not a live telemetry transport. The offline and history reports are complete in this stage; live viewing will use the same normalized metric schema through an explicit optional publisher contract and a separately authenticated ingestion endpoint.
+
+For live viewing, pass `live-endpoint` to a profiling workflow and map the `live-token` secret. The runner publishes through a bounded background queue; it never embeds the secret in the report. Open the Pages report with `?live=<encoded-api-base-url>&run=<github-run-id>-<run-attempt>`. The API contract and security requirements are documented in [Live telemetry protocol](docs/live-telemetry-protocol.md).
 
 ## Native AOT
 
@@ -148,7 +221,7 @@ Native AOT exposes only a subset of runtime events and does not support standard
 
 ## Versioning
 
-Production callers should use the moving major tag `v1` or pin a full commit SHA for maximum supply-chain stability. The `main` branch is for development and is not a stable interface.
+Production callers should use the moving major tag `v2` or pin a full commit SHA for maximum supply-chain stability. The `main` branch is for development and is not a stable interface.
 
 ## License
 

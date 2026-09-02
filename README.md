@@ -16,6 +16,7 @@ The lab generates an offline interactive Plotly report, Markdown summaries, norm
 - Runtime summaries for GC, allocation, ThreadPool, contention, assemblies, and JIT metrics.
 - Markdown, JSON, CSV, SVG, `.nettrace`, and GitHub job-summary output.
 - Offline Plotly.js charts with hover details, zooming, iteration selection, and SVG export.
+- A reusable GitHub Pages history site assembled from unexpired report artifacts.
 - Independent iterations with deterministic target-process cleanup.
 
 ## Security model
@@ -151,6 +152,58 @@ dotnet-performance-report/
 Run `npm ci --prefix web --ignore-scripts` before invoking the harness directly. Reusable workflows restore the pinned Plotly dependency automatically. The generated `web-report/index.html` works from an extracted artifact without a web server or network connection.
 
 Unavailable EventPipe diagnostics do not invalidate baseline results. This allows the external workflow to measure .NET Framework and non-.NET processes while clearly reporting that managed diagnostics were unavailable.
+
+## GitHub Pages history
+
+Enable GitHub Pages with **GitHub Actions** as its source in the caller repository, then add a deployment job after the profiling job. The site generator reads report artifacts through the GitHub API, publishes only artifacts that have not expired, and rebuilds the site from scratch on each deployment. Artifact retention therefore remains the single source of truth for report retention.
+
+```yaml
+permissions:
+  contents: read
+  actions: read
+  pages: write
+  id-token: write
+
+jobs:
+  performance:
+    uses: NeverMorewd/DotNetPerformanceLab/.github/workflows/profile-repository.yml@v2
+    with:
+      platform: Windows
+      project-path: src/MyApplication.csproj
+      runtime-identifier: win-x64
+      executable-path: MyApplication.exe
+      report-label: My Application
+
+  pages:
+    needs: performance
+    uses: NeverMorewd/DotNetPerformanceLab/.github/workflows/deploy-pages.yml@v2
+    with:
+      history-days: 30
+      maximum-runs: 50
+```
+
+Add a separate manually dispatched or scheduled caller when expired reports should disappear even when no new profile is produced:
+
+```yaml
+name: Refresh performance history
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 3 * * *'
+
+permissions:
+  contents: read
+  actions: read
+  pages: write
+  id-token: write
+
+jobs:
+  pages:
+    uses: NeverMorewd/DotNetPerformanceLab/.github/workflows/deploy-pages.yml@v2
+```
+
+GitHub Pages is a static host and is not a live telemetry transport. The offline and history reports are complete in this stage; live viewing will use the same normalized metric schema through an explicit optional publisher contract and a separately authenticated ingestion endpoint.
 
 ## Native AOT
 

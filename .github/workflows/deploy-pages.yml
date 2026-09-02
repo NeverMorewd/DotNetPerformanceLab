@@ -1,0 +1,91 @@
+name: Deploy performance history to GitHub Pages
+
+on:
+  workflow_call:
+    inputs:
+      artifact-name-prefix:
+        description: Prefix used by DotNetPerformanceLab report artifacts.
+        required: false
+        default: dotnet-performance-
+        type: string
+      history-days:
+        description: Only publish reports created within this many days.
+        required: false
+        default: 30
+        type: number
+      maximum-runs:
+        description: Maximum number of unexpired report artifacts to publish.
+        required: false
+        default: 50
+        type: number
+      toolkit-ref:
+        description: DotNetPerformanceLab version used to build the site.
+        required: false
+        default: v2
+        type: string
+    outputs:
+      page-url:
+        description: URL of the deployed performance history site.
+        value: ${{ jobs.deploy.outputs.page-url }}
+
+permissions:
+  contents: read
+  actions: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: performance-pages-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy performance history
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    outputs:
+      page-url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Checkout performance toolkit
+        uses: actions/checkout@v7
+        with:
+          repository: NeverMorewd/DotNetPerformanceLab
+          ref: ${{ inputs.toolkit-ref }}
+          persist-credentials: false
+
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.302
+
+      - name: Restore locked dependencies
+        run: dotnet restore DotNetPerformanceLab.slnx --locked-mode
+
+      - name: Build site generator
+        run: dotnet build src/DotNetPerformanceLab/DotNetPerformanceLab.csproj --configuration Release --no-restore
+
+      - name: Build performance history
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          DPL_SITE_REPOSITORY: ${{ github.repository }}
+          DPL_SITE_OUTPUT_DIRECTORY: ${{ runner.temp }}/dotnet-performance-pages
+          DPL_SITE_ARTIFACT_PREFIX: ${{ inputs.artifact-name-prefix }}
+          DPL_SITE_HISTORY_DAYS: ${{ inputs.history-days }}
+          DPL_SITE_MAXIMUM_RUNS: ${{ inputs.maximum-runs }}
+        run: dotnet run --project src/DotNetPerformanceLab/DotNetPerformanceLab.csproj --configuration Release --no-build -- site
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload GitHub Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: ${{ runner.temp }}/dotnet-performance-pages
+
+      - name: Deploy GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

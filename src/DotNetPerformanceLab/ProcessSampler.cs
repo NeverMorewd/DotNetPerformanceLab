@@ -19,7 +19,8 @@ public sealed class ProcessSampler
     public async Task<IterationResult> RunIterationAsync(
         RunSettings settings,
         int iteration,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        ILiveMetricPublisher? livePublisher = null)
     {
         await using var target = TargetProcess.Start(settings);
         var process = target.Process;
@@ -87,6 +88,7 @@ public sealed class ProcessSampler
                 io.WriteOperationCount,
                 io.ReadBytes,
                 io.WriteBytes));
+            livePublisher?.TryPublish(CreateMetricSamples([samples[^1]]));
 
             previousCpu = totalCpu;
             previousUserCpu = userCpu;

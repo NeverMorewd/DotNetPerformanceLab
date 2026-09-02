@@ -20,7 +20,10 @@ public sealed record RunSettings(
     bool FailOnTargetExit,
     IReadOnlyList<string> AllowedRoots,
     string ToolDirectory,
-    IReadOnlyList<string>? Meters = null);
+    IReadOnlyList<string>? Meters = null,
+    Uri? LiveEndpoint = null,
+    string? LiveToken = null,
+    string? LiveRunId = null);
 
 public sealed record ProcessSample(
     int Iteration,
@@ -136,4 +139,5 @@ public sealed record RunSettingsSnapshot(
 [JsonSerializable(typeof(IReadOnlyList<MetricSample>))]
 [JsonSerializable(typeof(WebReportPayload))]
 [JsonSerializable(typeof(IReadOnlyList<string>))]
+[JsonSerializable(typeof(LiveMetricBatch))]
 internal sealed partial class LabJsonContext : JsonSerializerContext;

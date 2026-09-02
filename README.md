@@ -207,6 +207,8 @@ jobs:
 
 GitHub Pages is a static host and is not a live telemetry transport. The offline and history reports are complete in this stage; live viewing will use the same normalized metric schema through an explicit optional publisher contract and a separately authenticated ingestion endpoint.
 
+For live viewing, pass `live-endpoint` to a profiling workflow and map the `live-token` secret. The runner publishes through a bounded background queue; it never embeds the secret in the report. Open the Pages report with `?live=<encoded-api-base-url>&run=<github-run-id>-<run-attempt>`. The API contract and security requirements are documented in [Live telemetry protocol](docs/live-telemetry-protocol.md).
+
 ## Native AOT
 
 Native AOT requires EventPipe to use `dotnet-counters` and `dotnet-trace`:

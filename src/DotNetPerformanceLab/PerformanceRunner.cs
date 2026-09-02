@@ -27,11 +27,12 @@ public sealed class PerformanceRunner
         settings = TargetValidator.Validate(settings);
         PrepareOutputDirectory(settings.OutputDirectory);
         var iterations = new List<IterationResult>(settings.Iterations);
+        await using var livePublisher = LiveMetricPublisher.Create(settings);
 
         for (var iteration = 1; iteration <= settings.Iterations; iteration++)
         {
             Console.WriteLine($"Starting baseline iteration {iteration} of {settings.Iterations}.");
-            iterations.Add(await _sampler.RunIterationAsync(settings, iteration, cancellationToken).ConfigureAwait(false));
+            iterations.Add(await _sampler.RunIterationAsync(settings, iteration, cancellationToken, livePublisher).ConfigureAwait(false));
 
             if (iteration < settings.Iterations && settings.Cooldown > TimeSpan.Zero)
             {
@@ -46,6 +47,7 @@ public sealed class PerformanceRunner
         var runtimeSamples = diagnostics.Counters.Collected && diagnostics.Counters.File is not null
             ? RuntimeCounterParser.ParseSamples(Path.Combine(settings.OutputDirectory, diagnostics.Counters.File))
             : [];
+        if (runtimeSamples.Count > 0) livePublisher.TryPublish(runtimeSamples);
         var result = new PerformanceRunResult(
             SchemaVersion: 3,
             TargetPath: settings.TargetPath,

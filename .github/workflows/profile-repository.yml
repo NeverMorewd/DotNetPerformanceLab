@@ -3,12 +3,22 @@ name: Profile repository application
 on:
   workflow_call:
     inputs:
+      target-repository:
+        description: Target repository in owner/name form. Empty profiles the caller repository.
+        required: false
+        default: ''
+        type: string
+      target-ref:
+        description: Target branch, tag, or commit. Empty uses the target repository default branch.
+        required: false
+        default: ''
+        type: string
       platform:
         description: "Runner OS label: Windows, Linux, or macOS."
         required: true
         type: string
       project-path:
-        description: Project path relative to the caller repository root.
+        description: Project path relative to the target repository root.
         required: true
         type: string
       runtime-identifier:
@@ -107,6 +117,9 @@ on:
         default: false
         type: boolean
     secrets:
+      target-repository-token:
+        description: Read-only token used only to checkout a private target repository.
+        required: false
       live-token:
         description: Bearer token for the optional live ingestion endpoint.
         required: false
@@ -116,16 +129,19 @@ permissions:
 
 jobs:
   profile:
-    if: ${{ github.event_name == 'workflow_dispatch' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' }}
     name: Profile ${{ inputs.report-label }}
     runs-on: ${{ inputs.use-github-hosted-validation-runner && 'windows-latest' || fromJSON(format('["self-hosted","metric-test","{0}"]', inputs.platform)) }}
     environment: ${{ inputs.use-github-hosted-validation-runner && 'toolkit-validation' || 'performance-lab' }}
     timeout-minutes: 180
 
     steps:
-      - name: Checkout caller repository
+      - name: Checkout target repository
         uses: actions/checkout@v7
         with:
+          repository: ${{ inputs.target-repository || github.repository }}
+          ref: ${{ inputs.target-ref }}
+          token: ${{ secrets.target-repository-token || github.token }}
           path: target
           persist-credentials: false
 

@@ -73,6 +73,23 @@ jobs:
       meters-json: '["Microsoft.AspNetCore.Hosting","System.Net.Http"]'
 ```
 
+The profiling workflow can live in a separate dashboard repository. Set `target-repository` and `target-ref`; reports and artifacts then belong to the caller while source is checked out from the target:
+
+```yaml
+jobs:
+  performance:
+    uses: NeverMorewd/DotNetPerformanceLab/.github/workflows/profile-repository.yml@v2
+    with:
+      target-repository: owner/application
+      target-ref: main
+      platform: Windows
+      project-path: src/Application.csproj
+      runtime-identifier: win-x64
+      executable-path: Application.exe
+```
+
+Public targets need no additional credentials. For private targets, pass a fine-grained read-only token through the reusable workflow's `target-repository-token` secret. The token is used only by checkout and credentials are not persisted.
+
 Use `MyApplication` rather than `MyApplication.exe` for published Linux and macOS app hosts.
 
 ## Analyze an external executable

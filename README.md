@@ -14,6 +14,7 @@ The lab generates an offline interactive Plotly report, Markdown summaries, norm
 - A versioned normalized metric model with explicit availability and collector capabilities.
 - Pinned `dotnet-counters` and `dotnet-trace` diagnostic passes.
 - Runtime summaries for GC, allocation, ThreadPool, contention, assemblies, and JIT metrics.
+- Optional application and framework meters from `System.Diagnostics.Metrics`, including ASP.NET Core, System.Net, and application-defined instruments.
 - Markdown, JSON, CSV, SVG, `.nettrace`, and GitHub job-summary output.
 - Offline Plotly.js charts with hover details, zooming, iteration selection, and SVG export.
 - A reusable GitHub Pages history site assembled from unexpired report artifacts.
@@ -69,6 +70,7 @@ jobs:
       report-label: My Application
       self-contained: true
       publish-aot: false
+      meters-json: '["Microsoft.AspNetCore.Hosting","System.Net.Http"]'
 ```
 
 Use `MyApplication` rather than `MyApplication.exe` for published Linux and macOS app hosts.

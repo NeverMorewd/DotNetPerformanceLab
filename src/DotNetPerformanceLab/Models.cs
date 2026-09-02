@@ -19,7 +19,8 @@ public sealed record RunSettings(
     TimeSpan TraceDuration,
     bool FailOnTargetExit,
     IReadOnlyList<string> AllowedRoots,
-    string ToolDirectory);
+    string ToolDirectory,
+    IReadOnlyList<string>? Meters = null);
 
 public sealed record ProcessSample(
     int Iteration,
@@ -128,7 +129,8 @@ public sealed record RunSettingsSnapshot(
     bool CollectCounters,
     int CounterDurationSeconds,
     bool CollectTrace,
-    int TraceDurationSeconds);
+    int TraceDurationSeconds,
+    IReadOnlyList<string>? Meters = null);
 
 [JsonSerializable(typeof(PerformanceRunResult))]
 [JsonSerializable(typeof(IReadOnlyList<MetricSample>))]

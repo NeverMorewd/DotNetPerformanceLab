@@ -37,6 +37,7 @@ public sealed class RuntimeCounterParserTests : IDisposable
               "Events": [
                 { "timestamp": "2026-09-01T12:00:00Z", "name": "dotnet.gc.last_collection.heap.size (By)", "tags": "gc.heap.generation=loh", "value": 1024 },
                 { "timestamp": "2026-09-01T12:00:01Z", "name": "dotnet.process.cpu.count ({cpu})", "tags": "", "value": 8 },
+                { "timestamp": "2026-09-01T12:00:02Z", "provider": "Sample.Application", "name": "orders.processed ({order})", "tags": "region=eu", "value": 4 },
                 { "timestamp": "2026-09-01T12:00:01Z", "name": "custom.metric (1)", "tags": "", "value": 4 }
               ]
             }
@@ -44,11 +45,13 @@ public sealed class RuntimeCounterParserTests : IDisposable
 
         var result = RuntimeCounterParser.ParseSamples(_path);
 
-        Assert.Equal(2, result.Count);
-        Assert.All(result, sample => Assert.Equal(MetricScope.Runtime, sample.Scope));
+        Assert.Equal(3, result.Count);
+        Assert.Equal(MetricScope.Runtime, result[0].Scope);
         Assert.Equal("By", result[0].Unit);
         Assert.Equal("loh", result[0].Tags["gc.heap.generation"]);
         Assert.Equal(1, result[1].ElapsedSeconds);
+        Assert.Equal(MetricScope.Application, result[2].Scope);
+        Assert.Equal("orders.processed", result[2].Name);
     }
 
     public void Dispose()

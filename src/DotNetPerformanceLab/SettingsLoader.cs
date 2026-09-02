@@ -37,7 +37,12 @@ public static class SettingsLoader
             TraceDuration: Seconds(read, "DPL_TRACE_DURATION_SECONDS", 30, 5, 3600),
             FailOnTargetExit: Boolean(read, "DPL_FAIL_ON_TARGET_EXIT", true),
             AllowedRoots: allowedRoots,
-            ToolDirectory: Get(read, "DPL_TOOL_DIRECTORY", Environment.CurrentDirectory));
+            ToolDirectory: Get(read, "DPL_TOOL_DIRECTORY", Environment.CurrentDirectory),
+            Meters: ParseStringArray(read("DPL_METERS_JSON"), "DPL_METERS_JSON")
+                .Where(meter => !string.IsNullOrWhiteSpace(meter))
+                .Select(meter => meter.Trim())
+                .Distinct(StringComparer.Ordinal)
+                .ToArray());
     }
 
     private static string Require(Func<string, string?> read, string name) =>

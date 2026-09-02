@@ -14,7 +14,7 @@ public static class RuntimeCounterParser
             .Select(item => TryReadSample(item, out var sample) ? sample : null)
             .Where(sample => sample is not null)
             .Cast<RawRuntimeSample>()
-            .Where(sample => sample.Name.StartsWith("dotnet.", StringComparison.Ordinal))
+            .Where(sample => sample.Name.StartsWith("dotnet.", StringComparison.Ordinal) || sample.Provider.Length > 0)
             .OrderBy(sample => sample.TimestampUtc)
             .ToArray();
         if (raw.Length == 0) return [];
@@ -24,7 +24,7 @@ public static class RuntimeCounterParser
             0,
             sample.TimestampUtc,
             Math.Max(0, (sample.TimestampUtc - startedUtc).TotalSeconds),
-            MetricScope.Runtime,
+            sample.Provider == "System.Runtime" || sample.Name.StartsWith("dotnet.", StringComparison.Ordinal) ? MetricScope.Runtime : MetricScope.Application,
             DisplayName(sample.Name),
             sample.Value,
             RawUnit(sample.Name),
@@ -49,7 +49,7 @@ public static class RuntimeCounterParser
         foreach (var item in events.EnumerateArray())
         {
             if (!TryRead(item, out var name, out var tags, out var value) ||
-                !name.StartsWith("dotnet.", StringComparison.Ordinal))
+                (!name.StartsWith("dotnet.", StringComparison.Ordinal) && !HasProvider(item)))
             {
                 continue;
             }
@@ -111,7 +111,8 @@ public static class RuntimeCounterParser
             return false;
         }
 
-        sample = new RawRuntimeSample(timestamp, name, tags, value);
+        var provider = item.TryGetProperty("provider", out var providerElement) ? providerElement.GetString() ?? string.Empty : string.Empty;
+        sample = new RawRuntimeSample(timestamp, provider, name, tags, value);
         return true;
     }
 
@@ -157,5 +158,8 @@ public static class RuntimeCounterParser
         return name.Contains("/ 1 sec", StringComparison.Ordinal) ? "/s" : string.Empty;
     }
 
-    private sealed record RawRuntimeSample(DateTimeOffset TimestampUtc, string Name, string Tags, double Value);
+    private static bool HasProvider(JsonElement item) =>
+        item.TryGetProperty("provider", out var provider) && !string.IsNullOrWhiteSpace(provider.GetString());
+
+    private sealed record RawRuntimeSample(DateTimeOffset TimestampUtc, string Provider, string Name, string Tags, double Value);
 }

@@ -28,7 +28,7 @@ public sealed class DiagnosticCollector
         string toolName,
         TimeSpan duration,
         string outputFileName,
-        Func<int, TimeSpan, string, IReadOnlyList<string>> argumentsFactory,
+        Func<RunSettings, int, TimeSpan, string, IReadOnlyList<string>> argumentsFactory,
         CancellationToken cancellationToken)
     {
         await using var target = TargetProcess.Start(settings);
@@ -54,7 +54,7 @@ public sealed class DiagnosticCollector
         startInfo.ArgumentList.Add("run");
         startInfo.ArgumentList.Add(toolName);
         startInfo.ArgumentList.Add("--");
-        foreach (var argument in argumentsFactory(target.Process.Id, duration, outputPath))
+        foreach (var argument in argumentsFactory(settings, target.Process.Id, duration, outputPath))
         {
             startInfo.ArgumentList.Add(argument);
         }
@@ -105,7 +105,7 @@ public sealed class DiagnosticCollector
         }
     }
 
-    private static IReadOnlyList<string> BuildCountersArguments(int processId, TimeSpan duration, string outputPath) =>
+    private static IReadOnlyList<string> BuildCountersArguments(RunSettings settings, int processId, TimeSpan duration, string outputPath) =>
     [
         "collect",
         "--process-id", processId.ToString(System.Globalization.CultureInfo.InvariantCulture),
@@ -113,10 +113,10 @@ public sealed class DiagnosticCollector
         "--refresh-interval", "1",
         "--format", "json",
         "--output", outputPath,
-        "--counters", "System.Runtime"
+        "--counters", string.Join(',', new[] { "System.Runtime" }.Concat(settings.Meters ?? []))
     ];
 
-    private static IReadOnlyList<string> BuildTraceArguments(int processId, TimeSpan duration, string outputPath) =>
+    private static IReadOnlyList<string> BuildTraceArguments(RunSettings settings, int processId, TimeSpan duration, string outputPath) =>
     [
         "collect",
         "--process-id", processId.ToString(System.Globalization.CultureInfo.InvariantCulture),

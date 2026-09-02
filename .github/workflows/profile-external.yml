@@ -55,6 +55,11 @@ on:
         required: false
         default: 30
         type: number
+      meters-json:
+        description: Additional System.Diagnostics.Metrics meter names as a JSON string array.
+        required: false
+        default: '[]'
+        type: string
       collect-trace:
         required: false
         default: false
@@ -145,6 +150,7 @@ jobs:
           DPL_ITERATIONS: ${{ inputs.iterations }}
           DPL_COLLECT_COUNTERS: ${{ inputs.collect-counters }}
           DPL_COUNTER_DURATION_SECONDS: ${{ inputs.counter-duration-seconds }}
+          DPL_METERS_JSON: ${{ inputs.meters-json }}
           DPL_COLLECT_TRACE: ${{ inputs.collect-trace }}
           DPL_TRACE_DURATION_SECONDS: ${{ inputs.trace-duration-seconds }}
           DPL_FAIL_ON_TARGET_EXIT: ${{ inputs.fail-on-target-exit }}

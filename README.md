@@ -236,6 +236,8 @@ Native AOT requires EventPipe to use `dotnet-counters` and `dotnet-trace`:
 <EventSourceSupport>true</EventSourceSupport>
 ```
 
+The repository profiling workflow enables this property automatically when it publishes a Native AOT target and runtime counters or traces are requested. External executable profiling cannot modify an existing binary; its publisher must enable EventPipe before compilation.
+
 Native AOT exposes only a subset of runtime events and does not support standard managed heap analysis. Baseline process metrics remain available regardless.
 
 ## Versioning

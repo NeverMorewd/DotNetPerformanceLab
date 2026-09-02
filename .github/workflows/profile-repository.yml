@@ -194,6 +194,7 @@ jobs:
           DPL_SELF_CONTAINED: ${{ inputs.self-contained }}
           DPL_PUBLISH_AOT: ${{ inputs.publish-aot }}
           DPL_PUBLISH_TRIMMED: ${{ inputs.publish-trimmed }}
+          DPL_EVENT_SOURCE_SUPPORT: ${{ inputs.publish-aot && (inputs.collect-counters || inputs.collect-trace) }}
           DPL_LOCKED_RESTORE: ${{ inputs.locked-restore }}
         working-directory: .dotnet-performance-lab
         run: dotnet run --project src/DotNetPerformanceLab/DotNetPerformanceLab.csproj --configuration Release --no-build -- publish

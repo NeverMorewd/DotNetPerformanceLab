@@ -13,10 +13,16 @@ public static class RepositoryPublisher
         var selfContained = GetBoolean("DPL_SELF_CONTAINED", true);
         var publishAot = GetBoolean("DPL_PUBLISH_AOT", false);
         var publishTrimmed = GetBoolean("DPL_PUBLISH_TRIMMED", publishAot);
+        var eventSourceSupport = GetBoolean("DPL_EVENT_SOURCE_SUPPORT", false);
         var lockedRestore = GetBoolean("DPL_LOCKED_RESTORE", true);
 
         Directory.CreateDirectory(outputDirectory);
-        var publishProperties = new[] { $"-p:PublishAot={publishAot}", $"-p:PublishTrimmed={publishTrimmed}" };
+        var publishProperties = new[]
+        {
+            $"-p:PublishAot={publishAot}",
+            $"-p:PublishTrimmed={publishTrimmed}",
+            $"-p:EventSourceSupport={eventSourceSupport}"
+        };
         if (lockedRestore)
         {
             var lockedRestoreExitCode = await RunDotNetAsync(

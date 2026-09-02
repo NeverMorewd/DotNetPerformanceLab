@@ -4,7 +4,7 @@ namespace DotNetPerformanceLab;
 
 public sealed class DiagnosticCollector
 {
-    private static readonly TimeSpan DiagnosticStartupGrace = TimeSpan.FromSeconds(15);
+    private static readonly TimeSpan DiagnosticCompletionGrace = TimeSpan.FromSeconds(60);
     private static readonly TimeSpan ProcessShutdownGrace = TimeSpan.FromSeconds(10);
 
     public async Task<(DiagnosticArtifact Counters, DiagnosticArtifact Trace)> CollectAsync(
@@ -66,7 +66,7 @@ public sealed class DiagnosticCollector
             var stdout = tool.StandardOutput.ReadToEndAsync();
             var stderr = tool.StandardError.ReadToEndAsync();
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeout.CancelAfter(duration + DiagnosticStartupGrace);
+            timeout.CancelAfter(duration + DiagnosticCompletionGrace);
 
             try
             {
@@ -82,7 +82,7 @@ public sealed class DiagnosticCollector
                     true,
                     false,
                     Path.GetFileName(logPath),
-                    $"Diagnostic tool did not exit within {duration + DiagnosticStartupGrace:g}.");
+                    $"Diagnostic tool did not exit within {duration + DiagnosticCompletionGrace:g}.");
             }
 
             var log = (await stdout.ConfigureAwait(false)) + Environment.NewLine + (await stderr.ConfigureAwait(false));

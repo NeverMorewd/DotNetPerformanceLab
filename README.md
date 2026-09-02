@@ -155,6 +155,8 @@ Run `npm ci --prefix web --ignore-scripts` before invoking the harness directly.
 
 Unavailable EventPipe diagnostics do not invalidate baseline results. This allows the external workflow to measure .NET Framework and non-.NET processes while clearly reporting that managed diagnostics were unavailable.
 
+Diagnostic tools receive a bounded 60-second completion grace beyond the requested collection duration. This accommodates slower EventPipe attachment and output finalization for Native AOT desktop processes without allowing a stalled diagnostic pass to hold a runner indefinitely.
+
 ## GitHub Pages history
 
 Enable GitHub Pages with **GitHub Actions** as its source in the caller repository, then add a deployment job after the profiling job. The site generator reads report artifacts through the GitHub API, publishes only artifacts that have not expired, and rebuilds the site from scratch on each deployment. Artifact retention therefore remains the single source of truth for report retention.

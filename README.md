@@ -61,7 +61,7 @@ permissions:
 
 jobs:
   performance:
-    uses: NeverMorewd/DotNetPerformanceLab/.github/workflows/profile-repository.yml@v1
+    uses: NeverMorewd/DotNetPerformanceLab/.github/workflows/profile-repository.yml@v2
     with:
       platform: Windows
       project-path: src/MyApplication.csproj
@@ -95,7 +95,7 @@ permissions:
 
 jobs:
   performance:
-    uses: NeverMorewd/DotNetPerformanceLab/.github/workflows/profile-external.yml@v1
+    uses: NeverMorewd/DotNetPerformanceLab/.github/workflows/profile-external.yml@v2
     with:
       platform: Windows
       executable-path: ${{ inputs.executable-path }}
@@ -221,7 +221,7 @@ Native AOT exposes only a subset of runtime events and does not support standard
 
 ## Versioning
 
-Production callers should use the moving major tag `v1` or pin a full commit SHA for maximum supply-chain stability. The `main` branch is for development and is not a stable interface.
+Production callers should use the moving major tag `v2` or pin a full commit SHA for maximum supply-chain stability. The `main` branch is for development and is not a stable interface.
 
 ## License
 

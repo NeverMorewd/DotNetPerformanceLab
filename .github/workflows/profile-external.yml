@@ -83,7 +83,7 @@ on:
         type: number
       toolkit-ref:
         required: false
-        default: v1
+        default: v2
         type: string
     secrets:
       live-token:

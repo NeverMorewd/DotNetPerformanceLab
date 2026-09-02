@@ -58,6 +58,13 @@ public static class MarkdownReport
         AppendProperty(builder, "OS architecture", result.Environment.Architecture);
         AppendProperty(builder, "Process architecture", result.Environment.ProcessArchitecture);
         AppendProperty(builder, "Logical processors", result.Environment.LogicalProcessors.ToString(CultureInfo.InvariantCulture));
+        AppendProperty(builder, "Physical cores", result.Environment.PhysicalCores?.ToString(CultureInfo.InvariantCulture) ?? "Unavailable");
+        AppendProperty(builder, "Processor model", result.Environment.ProcessorModel ?? "Unavailable");
+        AppendProperty(builder, "Runtime identifier", result.Environment.RuntimeIdentifier ?? "Unavailable");
+        AppendProperty(builder, "Kernel", result.Environment.KernelVersion ?? "Unavailable");
+        AppendProperty(builder, "Physical memory", FormatBytes(result.Environment.TotalMemoryBytes));
+        AppendProperty(builder, "Swap", FormatBytes(result.Environment.TotalSwapBytes));
+        AppendProperty(builder, "Containerized", result.Environment.Containerized?.ToString() ?? "Unknown");
         AppendProperty(builder, "Machine", result.Environment.MachineName);
         AppendProperty(builder, "Runner", result.Environment.RunnerName);
         AppendProperty(builder, "Runner OS", result.Environment.RunnerOs);
@@ -126,6 +133,10 @@ public static class MarkdownReport
 
         await File.WriteAllTextAsync(path, builder.ToString(), new UTF8Encoding(false), cancellationToken).ConfigureAwait(false);
     }
+
+    private static string FormatBytes(long? value) => value.HasValue
+        ? $"{value.Value / BytesPerMegabyte:0.##} MB"
+        : "Unavailable";
 
     private static void AppendAggregateRow(
         StringBuilder builder,

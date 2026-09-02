@@ -4,27 +4,33 @@ namespace DotNetPerformanceLab;
 
 public static class RuntimeCounterParser
 {
-    private static readonly string[] IncludedMetrics =
-    [
-        "dotnet.gc.heap.total_allocated",
-        "dotnet.gc.last_collection.heap.size",
-        "dotnet.gc.last_collection.memory.committed_size",
-        "dotnet.gc.heap.fragmentation.size",
-        "dotnet.gc.pause.time",
-        "dotnet.gc.collections",
-        "dotnet.thread_pool.thread.count",
-        "dotnet.thread_pool.queue.length",
-        "dotnet.thread_pool.work_item.count",
-        "dotnet.monitor.lock_contentions",
-        "dotnet.exception.count",
-        "dotnet.timer.count",
-        "dotnet.jit.compilation.time",
-        "dotnet.jit.compiled_methods",
-        "dotnet.jit.compiled_il.size",
-        "dotnet.process.cpu.time",
-        "dotnet.process.memory.working_set",
-        "dotnet.assembly.count"
-    ];
+    public static IReadOnlyList<MetricSample> ParseSamples(string path)
+    {
+        if (!File.Exists(path)) return [];
+        using var document = JsonDocument.Parse(File.ReadAllBytes(path));
+        if (!document.RootElement.TryGetProperty("Events", out var events) || events.ValueKind != JsonValueKind.Array) return [];
+
+        var raw = events.EnumerateArray()
+            .Select(item => TryReadSample(item, out var sample) ? sample : null)
+            .Where(sample => sample is not null)
+            .Cast<RawRuntimeSample>()
+            .Where(sample => sample.Name.StartsWith("dotnet.", StringComparison.Ordinal))
+            .OrderBy(sample => sample.TimestampUtc)
+            .ToArray();
+        if (raw.Length == 0) return [];
+
+        var startedUtc = raw[0].TimestampUtc;
+        return raw.Select(sample => new MetricSample(
+            0,
+            sample.TimestampUtc,
+            Math.Max(0, (sample.TimestampUtc - startedUtc).TotalSeconds),
+            MetricScope.Runtime,
+            DisplayName(sample.Name),
+            sample.Value,
+            RawUnit(sample.Name),
+            ParseTags(sample.Tags),
+            MetricAvailability.Available)).ToArray();
+    }
 
     public static IReadOnlyList<RuntimeMetricSummary> Parse(string path)
     {
@@ -43,7 +49,7 @@ public static class RuntimeCounterParser
         foreach (var item in events.EnumerateArray())
         {
             if (!TryRead(item, out var name, out var tags, out var value) ||
-                !IncludedMetrics.Any(metric => name.StartsWith(metric, StringComparison.Ordinal)))
+                !name.StartsWith("dotnet.", StringComparison.Ordinal))
             {
                 continue;
             }
@@ -95,6 +101,41 @@ public static class RuntimeCounterParser
         return name.Length > 0;
     }
 
+    private static bool TryReadSample(JsonElement item, out RawRuntimeSample? sample)
+    {
+        sample = null;
+        if (!TryRead(item, out var name, out var tags, out var value) ||
+            !item.TryGetProperty("timestamp", out var timestampElement) ||
+            !timestampElement.TryGetDateTimeOffset(out var timestamp))
+        {
+            return false;
+        }
+
+        sample = new RawRuntimeSample(timestamp, name, tags, value);
+        return true;
+    }
+
+    private static IReadOnlyDictionary<string, string> ParseTags(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return new Dictionary<string, string>();
+        return text.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(item => item.Split('=', 2, StringSplitOptions.TrimEntries))
+            .Where(parts => parts.Length == 2 && parts[0].Length > 0)
+            .GroupBy(parts => parts[0], StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.Last()[1], StringComparer.Ordinal);
+    }
+
+    private static string RawUnit(string name)
+    {
+        var start = name.IndexOf(" (", StringComparison.Ordinal);
+        if (start < 0) return string.Empty;
+        var end = name.IndexOf(')', start + 2);
+        if (end < 0) return string.Empty;
+        var unit = name[(start + 2)..end];
+        var rate = unit.IndexOf(" / ", StringComparison.Ordinal);
+        return rate < 0 ? unit : unit[..rate];
+    }
+
     private static string DisplayName(string name)
     {
         var unitStart = name.IndexOf(" (", StringComparison.Ordinal);
@@ -115,4 +156,6 @@ public static class RuntimeCounterParser
 
         return name.Contains("/ 1 sec", StringComparison.Ordinal) ? "/s" : string.Empty;
     }
+
+    private sealed record RawRuntimeSample(DateTimeOffset TimestampUtc, string Name, string Tags, double Value);
 }

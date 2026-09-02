@@ -36,7 +36,11 @@ public sealed record ProcessSample(
     long? PeakWorkingSetBytes = null,
     long? PeakPagedMemoryBytes = null,
     int? HandleCount = null,
-    HostSnapshot? Host = null);
+    HostSnapshot? Host = null,
+    long? ReadOperationCount = null,
+    long? WriteOperationCount = null,
+    long? ReadBytes = null,
+    long? WriteBytes = null);
 
 public sealed record MetricStatistics(
     double Minimum,
@@ -92,7 +96,14 @@ public sealed record EnvironmentSnapshot(
     string RunnerName,
     string RunnerOs,
     string RunnerArchitecture,
-    DateTimeOffset CapturedUtc);
+    DateTimeOffset CapturedUtc,
+    string? RuntimeIdentifier = null,
+    string? KernelVersion = null,
+    string? ProcessorModel = null,
+    int? PhysicalCores = null,
+    long? TotalMemoryBytes = null,
+    long? TotalSwapBytes = null,
+    bool? Containerized = null);
 
 public sealed record PerformanceRunResult(
     int SchemaVersion,
@@ -105,7 +116,8 @@ public sealed record PerformanceRunResult(
     DiagnosticArtifact Trace,
     IReadOnlyList<RuntimeMetricSummary> RuntimeMetrics,
     DateTimeOffset GeneratedUtc,
-    IReadOnlyList<CollectorCapability>? Capabilities = null);
+    IReadOnlyList<CollectorCapability>? Capabilities = null,
+    IReadOnlyList<MetricSample>? RuntimeSamples = null);
 
 public sealed record RunSettingsSnapshot(
     int WarmupSeconds,

@@ -7,11 +7,13 @@ public sealed class ProcessSampler
 {
     private readonly TimeProvider _timeProvider;
     private readonly IHostMetricCollector _hostMetrics;
+    private readonly IProcessIoCollector _processIo;
 
-    public ProcessSampler(TimeProvider? timeProvider = null, IHostMetricCollector? hostMetrics = null)
+    public ProcessSampler(TimeProvider? timeProvider = null, IHostMetricCollector? hostMetrics = null, IProcessIoCollector? processIo = null)
     {
         _timeProvider = timeProvider ?? TimeProvider.System;
         _hostMetrics = hostMetrics ?? HostMetricCollector.Create();
+        _processIo = processIo ?? ProcessIoCollector.Create();
     }
 
     public async Task<IterationResult> RunIterationAsync(
@@ -63,6 +65,7 @@ public sealed class ProcessSampler
             var userPercent = Percentage(userCpu, previousUserCpu, elapsedDelta);
             var systemPercent = Percentage(systemCpu, previousSystemCpu, elapsedDelta);
             var host = _hostMetrics.Capture();
+            var io = _processIo.Capture(process);
 
             samples.Add(new ProcessSample(
                 iteration,
@@ -79,7 +82,11 @@ public sealed class ProcessSampler
                 ReadLong(process, static item => item.PeakWorkingSet64),
                 ReadLong(process, static item => item.PeakPagedMemorySize64),
                 ReadInt(process, static item => item.HandleCount),
-                host));
+                host,
+                io.ReadOperationCount,
+                io.WriteOperationCount,
+                io.ReadBytes,
+                io.WriteBytes));
 
             previousCpu = totalCpu;
             previousUserCpu = userCpu;
@@ -167,6 +174,10 @@ public sealed class ProcessSampler
             Add(metrics, sample, MetricScope.Process, MetricNames.ProcessMemoryVirtual, sample.VirtualMemoryBytes, "By");
             Add(metrics, sample, MetricScope.Process, MetricNames.ProcessThreads, sample.ThreadCount, "{thread}");
             Add(metrics, sample, MetricScope.Process, MetricNames.ProcessHandles, sample.HandleCount, "{handle}");
+            Add(metrics, sample, MetricScope.Process, MetricNames.ProcessIoReadOperations, sample.ReadOperationCount, "{operation}");
+            Add(metrics, sample, MetricScope.Process, MetricNames.ProcessIoWriteOperations, sample.WriteOperationCount, "{operation}");
+            Add(metrics, sample, MetricScope.Process, MetricNames.ProcessIoReadBytes, sample.ReadBytes, "By");
+            Add(metrics, sample, MetricScope.Process, MetricNames.ProcessIoWriteBytes, sample.WriteBytes, "By");
 
             if (sample.Host is not { } host)
             {

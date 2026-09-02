@@ -8,14 +8,17 @@ public sealed class PerformanceRunner
     private readonly ProcessSampler _sampler;
     private readonly DiagnosticCollector _diagnostics;
     private readonly IHostMetricCollector _hostMetrics;
+    private readonly IProcessIoCollector _processIo;
 
     public PerformanceRunner(
         ProcessSampler? sampler = null,
         DiagnosticCollector? diagnostics = null,
-        IHostMetricCollector? hostMetrics = null)
+        IHostMetricCollector? hostMetrics = null,
+        IProcessIoCollector? processIo = null)
     {
         _hostMetrics = hostMetrics ?? HostMetricCollector.Create();
-        _sampler = sampler ?? new ProcessSampler(hostMetrics: _hostMetrics);
+        _processIo = processIo ?? ProcessIoCollector.Create();
+        _sampler = sampler ?? new ProcessSampler(hostMetrics: _hostMetrics, processIo: _processIo);
         _diagnostics = diagnostics ?? new DiagnosticCollector();
     }
 
@@ -40,8 +43,11 @@ public sealed class PerformanceRunner
         var runtimeMetrics = diagnostics.Counters.Collected && diagnostics.Counters.File is not null
             ? RuntimeCounterParser.Parse(Path.Combine(settings.OutputDirectory, diagnostics.Counters.File))
             : [];
+        var runtimeSamples = diagnostics.Counters.Collected && diagnostics.Counters.File is not null
+            ? RuntimeCounterParser.ParseSamples(Path.Combine(settings.OutputDirectory, diagnostics.Counters.File))
+            : [];
         var result = new PerformanceRunResult(
-            SchemaVersion: 2,
+            SchemaVersion: 3,
             TargetPath: settings.TargetPath,
             ReportLabel: settings.ReportLabel,
             Settings: new RunSettingsSnapshot(
@@ -54,13 +60,24 @@ public sealed class PerformanceRunner
                 (int)settings.CounterDuration.TotalSeconds,
                 settings.CollectTrace,
                 (int)settings.TraceDuration.TotalSeconds),
-            Environment: CaptureEnvironment(),
+            Environment: SystemInformationCollector.Capture(_hostMetrics),
             Iterations: iterations,
             Counters: diagnostics.Counters,
             Trace: diagnostics.Trace,
             RuntimeMetrics: runtimeMetrics,
             GeneratedUtc: DateTimeOffset.UtcNow,
-            Capabilities: [_hostMetrics.Capability]);
+            Capabilities:
+            [
+                _hostMetrics.Capability,
+                _processIo.Capability,
+                new CollectorCapability(
+                    "System.Runtime diagnostics",
+                    MetricScope.Runtime,
+                    diagnostics.Counters.Collected ? MetricAvailability.Available : MetricAvailability.Unavailable,
+                    runtimeSamples.Select(sample => sample.Name).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray(),
+                    diagnostics.Counters.Message)
+            ],
+            RuntimeSamples: runtimeSamples);
 
         await WriteOutputsAsync(settings.OutputDirectory, result, cancellationToken).ConfigureAwait(false);
         return result;
@@ -96,7 +113,7 @@ public sealed class PerformanceRunner
             result,
             MarkdownReportTarget.DownloadableArtifact,
             cancellationToken).ConfigureAwait(false);
-        var metrics = result.Iterations.SelectMany(iteration => iteration.Metrics ?? []).ToArray();
+        var metrics = result.Iterations.SelectMany(iteration => iteration.Metrics ?? []).Concat(result.RuntimeSamples ?? []).ToArray();
         await using (var metricsStream = File.Create(Path.Combine(outputDirectory, "metrics.json")))
         {
             await JsonSerializer.SerializeAsync(metricsStream, metrics, LabJsonContext.Default.IReadOnlyListMetricSample, cancellationToken).ConfigureAwait(false);
@@ -139,15 +156,4 @@ public sealed class PerformanceRunner
         return samples;
     }
 
-    private static EnvironmentSnapshot CaptureEnvironment() => new(
-        RuntimeInformation.OSDescription,
-        RuntimeInformation.FrameworkDescription,
-        RuntimeInformation.OSArchitecture.ToString(),
-        RuntimeInformation.ProcessArchitecture.ToString(),
-        Environment.ProcessorCount,
-        Environment.MachineName,
-        Environment.GetEnvironmentVariable("RUNNER_NAME") ?? "Local",
-        Environment.GetEnvironmentVariable("RUNNER_OS") ?? RuntimeInformation.OSDescription,
-        Environment.GetEnvironmentVariable("RUNNER_ARCH") ?? RuntimeInformation.OSArchitecture.ToString(),
-        DateTimeOffset.UtcNow);
 }

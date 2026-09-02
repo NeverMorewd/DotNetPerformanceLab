@@ -49,6 +49,10 @@ public static class MetricNames
     public const string ProcessMemoryVirtual = "process.memory.virtual";
     public const string ProcessThreads = "process.thread.count";
     public const string ProcessHandles = "process.handle.count";
+    public const string ProcessIoReadOperations = "process.io.read.operations";
+    public const string ProcessIoWriteOperations = "process.io.write.operations";
+    public const string ProcessIoReadBytes = "process.io.read.bytes";
+    public const string ProcessIoWriteBytes = "process.io.write.bytes";
     public const string HostCpuUsage = "host.cpu.usage";
     public const string HostMemoryTotal = "host.memory.total";
     public const string HostMemoryAvailable = "host.memory.available";

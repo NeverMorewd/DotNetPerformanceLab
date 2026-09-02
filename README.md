@@ -2,7 +2,7 @@
 
 Reusable GitHub Actions workflows and a cross-platform performance harness for measuring .NET applications on self-hosted runners.
 
-The lab generates a Markdown report, raw JSON and CSV samples, SVG charts, runtime counters, and optional EventPipe traces. Baseline process sampling is isolated from diagnostic collection so profiler overhead does not contaminate the primary CPU and memory measurements.
+The lab generates an offline interactive Plotly report, Markdown summaries, normalized JSON and CSV samples, SVG charts, runtime counters, and optional EventPipe traces. Baseline process and host sampling is isolated from diagnostic collection so profiler overhead does not contaminate the primary CPU and memory measurements.
 
 ## Capabilities
 
@@ -10,9 +10,12 @@ The lab generates a Markdown report, raw JSON and CSV samples, SVG charts, runti
 - Framework-dependent, self-contained, Native AOT, .NET Framework, and non-.NET targets.
 - CPU core-equivalent and machine-normalized usage.
 - Working set, private memory, thread count, percentiles, variation, and growth rate.
+- Synchronized host CPU, physical memory, swap, network, process-count, and load-average measurements where supported.
+- A versioned normalized metric model with explicit availability and collector capabilities.
 - Pinned `dotnet-counters` and `dotnet-trace` diagnostic passes.
 - Runtime summaries for GC, allocation, ThreadPool, contention, assemblies, and JIT metrics.
 - Markdown, JSON, CSV, SVG, `.nettrace`, and GitHub job-summary output.
+- Offline Plotly.js charts with hover details, zooming, iteration selection, and SVG export.
 - Independent iterations with deterministic target-process cleanup.
 
 ## Security model
@@ -124,15 +127,28 @@ Each run uploads:
 ```text
 dotnet-performance-report/
 ├── report.md
+├── job-summary.md
 ├── summary.json
+├── metrics.json
 ├── samples-iteration-1.csv
 ├── runtime-counters.json
 ├── runtime.nettrace
+├── web-report/
+│   ├── index.html
+│   └── assets/
+│       ├── plotly-basic.min.js
+│       ├── dashboard.js
+│       ├── dashboard.css
+│       └── data.js
 └── charts/
     ├── cpu.svg
     ├── working-set.svg
-    └── private-memory.svg
+    ├── private-memory.svg
+    ├── host-cpu.svg
+    └── host-memory.svg
 ```
+
+Run `npm ci --prefix web --ignore-scripts` before invoking the harness directly. Reusable workflows restore the pinned Plotly dependency automatically. The generated `web-report/index.html` works from an extracted artifact without a web server or network connection.
 
 Unavailable EventPipe diagnostics do not invalidate baseline results. This allows the external workflow to measure .NET Framework and non-.NET processes while clearly reporting that managed diagnostics were unavailable.
 

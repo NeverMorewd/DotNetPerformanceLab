@@ -18,6 +18,10 @@ public static class MarkdownReport
         builder.Append("**Target:** ").Append(Escape(result.ReportLabel)).AppendLine("  ");
         builder.Append("**Executable:** `").Append(EscapeCode(result.TargetPath)).AppendLine("`  ");
         builder.Append("**Generated:** ").Append(result.GeneratedUtc.ToString("u", CultureInfo.InvariantCulture)).AppendLine().AppendLine();
+        if (target == MarkdownReportTarget.DownloadableArtifact)
+        {
+            builder.AppendLine("[Open the interactive Plotly report](web-report/index.html)").AppendLine();
+        }
 
         builder.AppendLine("## Executive summary").AppendLine();
         builder.AppendLine("| Metric | Median | P95 | Maximum | Final | Growth/min |");

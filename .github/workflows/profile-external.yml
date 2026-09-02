@@ -105,6 +105,17 @@ jobs:
             9.0.x
             10.0.302
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: .dotnet-performance-lab/web/package-lock.json
+
+      - name: Restore locked web dependencies
+        working-directory: .dotnet-performance-lab
+        run: npm ci --prefix web --ignore-scripts
+
       - name: Restore locked toolkit dependencies
         working-directory: .dotnet-performance-lab
         run: dotnet restore DotNetPerformanceLab.slnx --locked-mode

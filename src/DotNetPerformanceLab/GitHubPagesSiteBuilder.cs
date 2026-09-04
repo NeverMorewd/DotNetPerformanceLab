@@ -125,27 +125,40 @@ public static class GitHubPagesSiteBuilder
             await source.CopyToAsync(target, cancellationToken).ConfigureAwait(false);
         }
 
-        var reportEntry = archive.GetEntry("summary.json");
         var indexPath = Path.Combine(reportRoot, "index.html");
-        if (reportEntry is null || !File.Exists(indexPath))
+        if (!File.Exists(indexPath))
         {
             return null;
         }
 
-        await using var reportStream = reportEntry.Open();
-        var result = await JsonSerializer.DeserializeAsync(reportStream, LabJsonContext.Default.PerformanceRunResult, cancellationToken).ConfigureAwait(false);
-        return result is null
-            ? null
-            : new SiteReport(
+        if (archive.GetEntry("summary.json") is { } reportEntry)
+        {
+            await using var reportStream = reportEntry.Open();
+            var result = await JsonSerializer.DeserializeAsync(reportStream, LabJsonContext.Default.PerformanceRunResult, cancellationToken).ConfigureAwait(false);
+            return result is null ? null : new SiteReport(
                 artifact.Id,
                 artifact.RunId,
                 artifact.Name,
+                "Run",
                 result.ReportLabel,
                 result.GeneratedUtc,
                 artifact.ExpiresUtc,
                 result.Environment.OperatingSystem,
                 result.Environment.ProcessArchitecture,
-                $"runs/{artifact.RunId}/{artifact.Id}/index.html");
+                $"runs/{artifact.RunId}/{artifact.Id}/index.html",
+                $"runs/{artifact.RunId}/{artifact.Id}/comparison-data.json");
+        }
+
+        if (archive.GetEntry("comparison-summary.json") is { } comparisonEntry)
+        {
+            await using var comparisonStream = comparisonEntry.Open();
+            var comparison = await JsonSerializer.DeserializeAsync(comparisonStream, LabJsonContext.Default.ComparisonReportSummary, cancellationToken).ConfigureAwait(false);
+            return comparison is null ? null : new SiteReport(
+                artifact.Id, artifact.RunId, artifact.Name, "Comparison", comparison.Title, comparison.GeneratedUtc,
+                artifact.ExpiresUtc, $"{comparison.Sources.Count} reports", $"{comparison.Metrics} metrics", $"runs/{artifact.RunId}/{artifact.Id}/index.html", null);
+        }
+
+        return null;
     }
 
     private static async Task WriteIndexAsync(
@@ -157,8 +170,10 @@ public static class GitHubPagesSiteBuilder
         var rows = new StringBuilder();
         foreach (var report in reports)
         {
-            rows.Append("<tr><td><a href=\"").Append(Html(report.RelativeUrl)).Append("\">")
-                .Append(Html(report.Label)).Append("</a></td><td>")
+            rows.Append("<tr><td>").Append(Html(report.Kind)).Append("</td><td><a href=\"").Append(Html(report.RelativeUrl)).Append("\">")
+                .Append(Html(report.Label)).Append("</a>");
+            if (report.DataUrl is not null) rows.Append(" <a href=\"").Append(Html(report.DataUrl)).Append("\">Data</a>");
+            rows.Append("</td><td>")
                 .Append(Html(report.OperatingSystem)).Append(" · ").Append(Html(report.Architecture))
                 .Append("</td><td>").Append(report.GeneratedUtc.ToString("u", System.Globalization.CultureInfo.InvariantCulture))
                 .Append("</td><td>").Append(report.ExpiresUtc.ToString("u", System.Globalization.CultureInfo.InvariantCulture))
@@ -177,7 +192,7 @@ public static class GitHubPagesSiteBuilder
               </style>
             </head>
             <body><main><h1>.NET Performance History</h1><div class="sub">{{Html(repository)}} · reports are removed when their source artifacts expire.</div>
-            {{(reports.Count == 0 ? "<div class=\"empty\">No unexpired performance reports are available.</div>" : $"<table><thead><tr><th>Target</th><th>Environment</th><th>Generated</th><th>Expires</th></tr></thead><tbody>{rows}</tbody></table>")}}
+            {{(reports.Count == 0 ? "<div class=\"empty\">No unexpired performance reports are available.</div>" : $"<table><thead><tr><th>Type</th><th>Target</th><th>Environment</th><th>Generated</th><th>Expires</th></tr></thead><tbody>{rows}</tbody></table>")}}
             </main></body></html>
             """;
         await File.WriteAllTextAsync(Path.Combine(outputDirectory, "index.html"), html, new UTF8Encoding(false), cancellationToken).ConfigureAwait(false);
@@ -237,7 +252,7 @@ public static class GitHubPagesSiteBuilder
     private static string Html(string value) => System.Net.WebUtility.HtmlEncode(value);
 
     private sealed record GitHubArtifact(long Id, string Name, string DownloadUrl, bool Expired, DateTimeOffset CreatedUtc, DateTimeOffset ExpiresUtc, long RunId);
-    private sealed record SiteReport(long Id, long RunId, string ArtifactName, string Label, DateTimeOffset GeneratedUtc, DateTimeOffset ExpiresUtc, string OperatingSystem, string Architecture, string RelativeUrl);
+    private sealed record SiteReport(long Id, long RunId, string ArtifactName, string Kind, string Label, DateTimeOffset GeneratedUtc, DateTimeOffset ExpiresUtc, string OperatingSystem, string Architecture, string RelativeUrl, string? DataUrl);
 }
 
 public sealed record GitHubPagesSiteSettings(

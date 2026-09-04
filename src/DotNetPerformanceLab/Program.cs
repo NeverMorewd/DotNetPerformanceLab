@@ -34,6 +34,11 @@ public static class Program
                 return await GitHubPagesSiteBuilder.RunAsync(cancellation.Token).ConfigureAwait(false);
             }
 
+            if (args.Length > 0 && string.Equals(args[0], "compare", StringComparison.OrdinalIgnoreCase))
+            {
+                return await ComparisonRunner.RunAsync(cancellation.Token).ConfigureAwait(false);
+            }
+
             var settings = SettingsLoader.FromEnvironment();
             var result = await new PerformanceRunner().RunAsync(settings, cancellation.Token).ConfigureAwait(false);
             Console.WriteLine($"Performance report: {Path.Combine(settings.OutputDirectory, "report.md")}");

@@ -25,6 +25,7 @@ public sealed class GitHubPagesSiteBuilderTests : IDisposable
         var index = await File.ReadAllTextAsync(Path.Combine(_outputDirectory, "index.html"), TestContext.Current.CancellationToken);
         Assert.Contains("Test application", index, StringComparison.Ordinal);
         Assert.Contains("runs/456/123/index.html", index, StringComparison.Ordinal);
+        Assert.Contains("runs/456/123/comparison-data.json", index, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -46,6 +47,21 @@ public sealed class GitHubPagesSiteBuilderTests : IDisposable
             GitHubPagesSiteBuilder.BuildAsync(client, settings, TestContext.Current.CancellationToken));
     }
 
+    [Fact]
+    public async Task BuildAsyncPublishesComparisonArtifacts()
+    {
+        using var client = new HttpClient(new GitHubApiHandler(CreateComparisonArtifactArchive())) { BaseAddress = new Uri("https://api.github.test/") };
+        var settings = new GitHubPagesSiteSettings("owner/repository", _outputDirectory, "dotnet-performance-", 30, 10);
+
+        var exitCode = await GitHubPagesSiteBuilder.BuildAsync(client, settings, TestContext.Current.CancellationToken);
+
+        Assert.Equal(0, exitCode);
+        var index = await File.ReadAllTextAsync(Path.Combine(_outputDirectory, "index.html"), TestContext.Current.CancellationToken);
+        Assert.Contains("Comparison", index, StringComparison.Ordinal);
+        Assert.Contains("Before vs After", index, StringComparison.Ordinal);
+        Assert.Contains("2 reports", index, StringComparison.Ordinal);
+    }
+
     private static byte[] CreateArtifactArchive()
     {
         using var archive = new MemoryStream();
@@ -53,6 +69,18 @@ public sealed class GitHubPagesSiteBuilderTests : IDisposable
         {
             WriteEntry(zip, "web-report/index.html", "<!doctype html><title>Report</title>");
             WriteEntry(zip, "summary.json", JsonSerializer.Serialize(CreateResult()));
+        }
+
+        return archive.ToArray();
+    }
+
+    private static byte[] CreateComparisonArtifactArchive()
+    {
+        using var archive = new MemoryStream();
+        using (var zip = new ZipArchive(archive, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            WriteEntry(zip, "web-report/index.html", "<!doctype html><title>Comparison</title>");
+            WriteEntry(zip, "comparison-summary.json", JsonSerializer.Serialize(new ComparisonReportSummary(1, "Before vs After", DateTimeOffset.UtcNow, ["Before", "After"], 12)));
         }
 
         return archive.ToArray();

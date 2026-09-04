@@ -151,11 +151,13 @@ dotnet-performance-report/
 ├── job-summary.md
 ├── summary.json
 ├── metrics.json
+├── comparison-data.json
 ├── samples-iteration-1.csv
 ├── runtime-counters.json
 ├── runtime.nettrace
 ├── web-report/
 │   ├── index.html
+│   ├── comparison-data.json
 │   └── assets/
 │       ├── plotly-basic.min.js
 │       ├── dashboard.js
@@ -166,6 +168,30 @@ dotnet-performance-report/
 Run `npm ci --prefix web --ignore-scripts` before invoking the harness directly. Reusable workflows restore the pinned Plotly dependency automatically. The generated `web-report/index.html` works from an extracted artifact without a web server or network connection.
 
 Unavailable EventPipe diagnostics do not invalidate baseline results. This allows the external workflow to measure .NET Framework and non-.NET processes while clearly reporting that managed diagnostics were unavailable.
+
+## Compare multiple reports
+
+Every profile exports a versioned `comparison-data.json` contract containing minimum, mean, maximum, median, P95, final value, standard deviation, coefficient of variation, growth rate, sample count, unit, tags, and optimization direction for every available metric series. The same file is published beside the interactive report on GitHub Pages; use the **Data** link in the history table to copy its URL.
+
+Call the reusable comparison workflow with two to twelve report URLs:
+
+```yaml
+jobs:
+  compare:
+    uses: NeverMorewd/DotNetPerformanceLab/.github/workflows/compare-reports.yml@v2
+    with:
+      title: Before and after optimization
+      reports-json: >-
+        [
+          {"label":"Before","url":"https://owner.github.io/dashboard/runs/100/200/comparison-data.json"},
+          {"label":"After","url":"https://owner.github.io/dashboard/runs/101/201/comparison-data.json"}
+        ]
+      interactive-report-url: https://owner.github.io/dashboard/
+```
+
+The result contains one comprehensive table with minimum, mean, maximum, P95, and final values for every compatible metric. CPU, memory, allocation, pause, exception, contention, and queue metrics are ranked lower-is-better. Explicit throughput, completion, and success metrics are ranked higher-is-better. Host context and metrics with ambiguous semantics remain neutral and are compared without a winner. Red markers identify best values and include a symbol so the result does not depend on color alone.
+
+Only compare reports produced under the same workload, operating system, architecture, runner, power policy, duration, and sampling policy. The tool shows heterogeneous reports but does not claim that they form a valid benchmark.
 
 Diagnostic tools receive a bounded 60-second completion grace beyond the requested collection duration. This accommodates slower EventPipe attachment and output finalization for Native AOT desktop processes without allowing a stalled diagnostic pass to hold a runner indefinitely.
 

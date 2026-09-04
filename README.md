@@ -7,7 +7,8 @@ The lab generates an offline interactive Plotly report, Markdown summaries, norm
 ## Capabilities
 
 - Windows, macOS, and Linux process sampling through .NET APIs.
-- Framework-dependent, self-contained, Native AOT, .NET Framework, and non-.NET targets.
+- Caller-built .NET 8+ framework-dependent, self-contained, trimmed, and Native AOT applications.
+- Baseline process and host sampling for local legacy or non-.NET executables, with managed diagnostics reported as unavailable when unsupported.
 - CPU core-equivalent and machine-normalized usage.
 - Working set, private memory, thread count, percentiles, variation, and growth rate.
 - Synchronized host CPU, physical memory, swap, network, process-count, and load-average measurements where supported.
@@ -22,7 +23,7 @@ The lab generates an offline interactive Plotly report, Markdown summaries, norm
 
 ## Security model
 
-Performance workflows execute applications on a self-hosted machine. Both reusable workflows therefore:
+Performance workflows execute applications on a self-hosted machine. The reusable profiling workflows therefore:
 
 - run only when the caller was started with `workflow_dispatch`;
 - require the fixed `self-hosted` and `metric-test` runner labels;
@@ -46,9 +47,11 @@ self-hosted, metric-test, macOS
 
 Desktop applications need a signed-in interactive desktop session. Windows Session 0, headless macOS agents, and Linux runners without a desktop session are not representative UI test environments.
 
-## Analyze a repository application
+## Build and analyze a repository application
 
-The caller workflow must be manually dispatched. It publishes the requested project and analyzes the resulting executable on the selected runner.
+Source selection and compilation belong to the caller repository. The caller checks out any branch, tag, or commit, performs its own restore and publish process, and uploads the complete application as a workflow artifact. DotNetPerformanceLab downloads that artifact in a separate profiling job and is responsible only for validation, execution, collection, and reporting.
+
+This boundary supports .NET 8 and later without coupling the profiler to a repository layout, SDK version, build system, signing process, workload, or publish properties. It also prevents arbitrary build commands from being passed into a reusable workflow as strings.
 
 ```yaml
 name: Analyze repository performance
@@ -60,36 +63,38 @@ permissions:
   contents: read
 
 jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          repository: owner/application
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 8.0.x
+      - run: dotnet publish src/MyApplication.csproj --configuration Release --runtime win-x64 --self-contained true --output '${{ runner.temp }}/performance-target'
+      - uses: actions/upload-artifact@v7
+        with:
+          name: performance-target-Windows
+          path: ${{ runner.temp }}/performance-target
+          retention-days: 1
+
   performance:
-    uses: NeverMorewd/DotNetPerformanceLab/.github/workflows/profile-repository.yml@v2
+    needs: build
+    uses: NeverMorewd/DotNetPerformanceLab/.github/workflows/profile-artifact.yml@v3
     with:
       platform: Windows
-      project-path: src/MyApplication.csproj
-      runtime-identifier: win-x64
+      artifact-name: performance-target-Windows
       executable-path: MyApplication.exe
       report-label: My Application
-      self-contained: true
-      publish-aot: false
       meters-json: '["Microsoft.AspNetCore.Hosting","System.Net.Http"]'
 ```
 
-The profiling workflow can live in a separate dashboard repository. Set `target-repository` and `target-ref`; reports and artifacts then belong to the caller while source is checked out from the target:
+The complete configurable example is [`templates/dotnet-build-and-profile.yml`](templates/dotnet-build-and-profile.yml). Copy it into the caller repository and customize its build job. Public targets need no additional credentials. A private target needs a fine-grained token with read-only Contents access, used only by the caller's checkout step.
 
-```yaml
-jobs:
-  performance:
-    uses: NeverMorewd/DotNetPerformanceLab/.github/workflows/profile-repository.yml@v2
-    with:
-      target-repository: owner/application
-      target-ref: main
-      platform: Windows
-      project-path: src/Application.csproj
-      runtime-identifier: win-x64
-      executable-path: Application.exe
-      interactive-report-url: https://owner.github.io/performance-dashboard/
-```
-
-Public targets need no additional credentials. For private targets, pass a fine-grained read-only token through the reusable workflow's `target-repository-token` secret. The token is used only by checkout and credentials are not persisted.
+`profile-repository.yml` remains available as a v2 compatibility workflow while existing callers migrate. New integrations should use `profile-artifact.yml`; the coupled repository workflow is scheduled for removal in the next major version.
 
 Use `MyApplication` rather than `MyApplication.exe` for published Linux and macOS app hosts.
 

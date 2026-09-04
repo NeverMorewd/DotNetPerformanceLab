@@ -5,18 +5,34 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.302
+      - run: dotnet publish tests/DotNetPerformanceLab.TestTarget/DotNetPerformanceLab.TestTarget.csproj --configuration Release --runtime win-x64 --self-contained true --output '${{ runner.temp }}/target'
+      - uses: actions/upload-artifact@v7
+        with:
+          name: performance-lab-self-test-target
+          path: ${{ runner.temp }}/target
+          retention-days: 1
+
   profile:
-    uses: ./.github/workflows/profile-repository.yml
+    needs: build
+    uses: ./.github/workflows/profile-artifact.yml
     with:
       platform: Windows
-      project-path: tests/DotNetPerformanceLab.TestTarget/DotNetPerformanceLab.TestTarget.csproj
-      runtime-identifier: win-x64
+      artifact-name: performance-lab-self-test-target
       executable-path: dpl-test-target.exe
       arguments-json: '["--lifetime-seconds","60"]'
       report-label: Performance Lab test target
-      self-contained: true
       warmup-seconds: 1
       measurement-seconds: 5
       sample-interval-ms: 500

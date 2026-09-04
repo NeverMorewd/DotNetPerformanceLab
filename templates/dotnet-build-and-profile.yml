@@ -1,0 +1,131 @@
+name: Build and profile .NET application
+
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: Target and performance runner operating system
+        required: true
+        type: choice
+        options: [Windows, Linux, macOS]
+      target-repository:
+        description: Source repository in owner/name form
+        required: true
+        default: owner/application
+        type: string
+      target-ref:
+        description: Branch, tag, or commit to build
+        required: true
+        default: main
+        type: string
+      project-path:
+        description: Project path in the target repository
+        required: true
+        default: src/Application.csproj
+        type: string
+      executable-path:
+        description: Executable path relative to the publish output
+        required: true
+        default: Application.exe
+        type: string
+      report-label:
+        required: true
+        default: .NET Application
+        type: string
+      dotnet-version:
+        description: .NET SDK used by the caller-owned build
+        required: true
+        default: 8.0.x
+        type: string
+      runtime-identifier:
+        description: Target runtime identifier, for example win-x64, linux-x64, or osx-x64
+        required: true
+        default: win-x64
+        type: string
+      configuration:
+        required: true
+        default: Release
+        type: string
+      self-contained:
+        required: true
+        default: true
+        type: boolean
+      publish-aot:
+        required: true
+        default: false
+        type: boolean
+      publish-trimmed:
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  actions: read
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    name: Build target application
+    runs-on: ${{ inputs.platform == 'Windows' && 'windows-latest' || inputs.platform == 'Linux' && 'ubuntu-latest' || 'macos-latest' }}
+    steps:
+      - name: Checkout target repository
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ inputs.target-repository }}
+          ref: ${{ inputs.target-ref }}
+          token: ${{ secrets.TARGET_REPOSITORY_TOKEN || github.token }}
+          persist-credentials: false
+
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: ${{ inputs.dotnet-version }}
+
+      - name: Publish target application
+        shell: pwsh
+        env:
+          TARGET_PROJECT: ${{ inputs.project-path }}
+          TARGET_CONFIGURATION: ${{ inputs.configuration }}
+          TARGET_RUNTIME: ${{ inputs.runtime-identifier }}
+          TARGET_SELF_CONTAINED: ${{ inputs.self-contained }}
+          TARGET_PUBLISH_AOT: ${{ inputs.publish-aot }}
+          TARGET_PUBLISH_TRIMMED: ${{ inputs.publish-trimmed }}
+          TARGET_OUTPUT: ${{ runner.temp }}/performance-target
+        run: |
+          $publishArguments = @(
+            'publish', $env:TARGET_PROJECT,
+            '--configuration', $env:TARGET_CONFIGURATION,
+            '--runtime', $env:TARGET_RUNTIME,
+            '--self-contained', $env:TARGET_SELF_CONTAINED.ToLowerInvariant(),
+            '--output', $env:TARGET_OUTPUT,
+            "-p:PublishAot=$($env:TARGET_PUBLISH_AOT)",
+            "-p:PublishTrimmed=$($env:TARGET_PUBLISH_TRIMMED)"
+          )
+          & dotnet @publishArguments
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload application artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: performance-target-${{ inputs.platform }}
+          path: ${{ runner.temp }}/performance-target
+          if-no-files-found: error
+          retention-days: 1
+
+  profile:
+    needs: build
+    uses: NeverMorewd/DotNetPerformanceLab/.github/workflows/profile-artifact.yml@v3
+    with:
+      platform: ${{ inputs.platform }}
+      artifact-name: performance-target-${{ inputs.platform }}
+      executable-path: ${{ inputs.executable-path }}
+      report-label: ${{ inputs.report-label }}
+      toolkit-ref: v3
+
+  pages:
+    needs: profile
+    uses: NeverMorewd/DotNetPerformanceLab/.github/workflows/deploy-pages.yml@v3
+    with:
+      toolkit-ref: v3

@@ -140,4 +140,7 @@ public sealed record RunSettingsSnapshot(
 [JsonSerializable(typeof(WebReportPayload))]
 [JsonSerializable(typeof(IReadOnlyList<string>))]
 [JsonSerializable(typeof(LiveMetricBatch))]
+[JsonSerializable(typeof(ComparisonData))]
+[JsonSerializable(typeof(IReadOnlyList<ComparisonSource>))]
+[JsonSerializable(typeof(ComparisonReportSummary))]
 internal sealed partial class LabJsonContext : JsonSerializerContext;

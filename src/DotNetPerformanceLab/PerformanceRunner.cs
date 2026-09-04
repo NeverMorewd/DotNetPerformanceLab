@@ -99,8 +99,6 @@ public sealed class PerformanceRunner
         {
             Directory.CreateDirectory(outputDirectory);
         }
-
-        Directory.CreateDirectory(Path.Combine(outputDirectory, "charts"));
     }
 
     private static async Task WriteOutputsAsync(string outputDirectory, PerformanceRunResult result, CancellationToken cancellationToken)
@@ -126,37 +124,7 @@ public sealed class PerformanceRunner
             Path.Combine(outputDirectory, "job-summary.md"),
             result,
             MarkdownReportTarget.GitHubJobSummary,
-            cancellationToken).ConfigureAwait(false);
-        var chartSamples = CreateChartTimeline(result.Iterations);
-        var chartDirectory = Path.Combine(outputDirectory, "charts");
-        await SvgChart.WriteAsync(Path.Combine(chartDirectory, "cpu.svg"), "CPU core equivalent", "%", chartSamples, sample => sample.CpuCorePercent, cancellationToken).ConfigureAwait(false);
-        await SvgChart.WriteAsync(Path.Combine(chartDirectory, "working-set.svg"), "Working set", "MB", chartSamples, sample => sample.WorkingSetBytes / 1024d / 1024d, cancellationToken).ConfigureAwait(false);
-        await SvgChart.WriteAsync(Path.Combine(chartDirectory, "private-memory.svg"), "Private memory", "MB", chartSamples, sample => sample.PrivateMemoryBytes / 1024d / 1024d, cancellationToken).ConfigureAwait(false);
-        await SvgChart.WriteAsync(Path.Combine(chartDirectory, "host-cpu.svg"), "Host CPU", "%", chartSamples, sample => sample.Host?.CpuUsagePercent, cancellationToken).ConfigureAwait(false);
-        await SvgChart.WriteAsync(Path.Combine(chartDirectory, "host-memory.svg"), "Host memory used", "MB", chartSamples, sample =>
-            sample.Host is { TotalMemoryBytes: { } total, AvailableMemoryBytes: { } available }
-                ? (total - available) / 1024d / 1024d
-                : null, cancellationToken).ConfigureAwait(false);
+            cancellationToken,
+            Environment.GetEnvironmentVariable("DPL_INTERACTIVE_REPORT_URL")).ConfigureAwait(false);
     }
-
-    private static IReadOnlyList<ProcessSample> CreateChartTimeline(IReadOnlyList<IterationResult> iterations)
-    {
-        var samples = new List<ProcessSample>();
-        var offset = 0d;
-        foreach (var iteration in iterations)
-        {
-            foreach (var sample in iteration.Samples)
-            {
-                samples.Add(sample with { ElapsedSeconds = sample.ElapsedSeconds + offset });
-            }
-
-            if (iteration.Samples.Count > 0)
-            {
-                offset = samples[^1].ElapsedSeconds + 1;
-            }
-        }
-
-        return samples;
-    }
-
 }

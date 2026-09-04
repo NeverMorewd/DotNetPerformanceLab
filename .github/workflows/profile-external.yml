@@ -81,6 +81,11 @@ on:
         required: false
         default: 14
         type: number
+      interactive-report-url:
+        description: Optional HTTPS URL shown as the interactive dashboard link in the job summary.
+        required: false
+        default: ''
+        type: string
       toolkit-ref:
         required: false
         default: v2
@@ -123,8 +128,6 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: 24
-          cache: npm
-          cache-dependency-path: .dotnet-performance-lab/web/package-lock.json
 
       - name: Restore locked web dependencies
         working-directory: .dotnet-performance-lab
@@ -150,6 +153,7 @@ jobs:
           DPL_ARGUMENTS_JSON: ${{ inputs.arguments-json }}
           DPL_WORKING_DIRECTORY: ${{ inputs.working-directory }}
           DPL_REPORT_LABEL: ${{ inputs.report-label }}
+          DPL_INTERACTIVE_REPORT_URL: ${{ inputs.interactive-report-url }}
           DPL_OUTPUT_DIRECTORY: ${{ runner.temp }}/dotnet-performance-report
           DPL_TOOL_DIRECTORY: ${{ github.workspace }}/.dotnet-performance-lab
           DPL_WARMUP_SECONDS: ${{ inputs.warmup-seconds }}

@@ -2,7 +2,7 @@
 
 Reusable GitHub Actions workflows and a cross-platform performance harness for measuring .NET applications on self-hosted runners.
 
-The lab generates an offline interactive Plotly report, Markdown summaries, normalized JSON and CSV samples, SVG charts, runtime counters, and optional EventPipe traces. Baseline process and host sampling is isolated from diagnostic collection so profiler overhead does not contaminate the primary CPU and memory measurements.
+The lab generates an offline interactive Plotly report, Markdown summaries, normalized JSON and CSV samples, runtime counters, and optional EventPipe traces. Baseline process and host sampling is isolated from diagnostic collection so profiler overhead does not contaminate the primary CPU and memory measurements.
 
 ## Capabilities
 
@@ -15,8 +15,8 @@ The lab generates an offline interactive Plotly report, Markdown summaries, norm
 - Pinned `dotnet-counters` and `dotnet-trace` diagnostic passes.
 - Runtime summaries for GC, allocation, ThreadPool, contention, assemblies, and JIT metrics.
 - Optional application and framework meters from `System.Diagnostics.Metrics`, including ASP.NET Core, System.Net, and application-defined instruments.
-- Markdown, JSON, CSV, SVG, `.nettrace`, and GitHub job-summary output.
-- Offline Plotly.js charts with hover details, zooming, iteration selection, and SVG export.
+- Markdown, JSON, CSV, `.nettrace`, and GitHub job-summary output.
+- Offline Plotly.js charts with human-readable units, hover details, zooming, and explicit process, runtime, host, and application scopes.
 - A reusable GitHub Pages history site assembled from unexpired report artifacts.
 - Independent iterations with deterministic target-process cleanup.
 
@@ -86,6 +86,7 @@ jobs:
       project-path: src/Application.csproj
       runtime-identifier: win-x64
       executable-path: Application.exe
+      interactive-report-url: https://owner.github.io/performance-dashboard/
 ```
 
 Public targets need no additional credentials. For private targets, pass a fine-grained read-only token through the reusable workflow's `target-repository-token` secret. The token is used only by checkout and credentials are not persisted.
@@ -160,12 +161,6 @@ dotnet-performance-report/
 │       ├── dashboard.js
 │       ├── dashboard.css
 │       └── data.js
-└── charts/
-    ├── cpu.svg
-    ├── working-set.svg
-    ├── private-memory.svg
-    ├── host-cpu.svg
-    └── host-memory.svg
 ```
 
 Run `npm ci --prefix web --ignore-scripts` before invoking the harness directly. Reusable workflows restore the pinned Plotly dependency automatically. The generated `web-report/index.html` works from an extracted artifact without a web server or network connection.
@@ -194,6 +189,7 @@ jobs:
       runtime-identifier: win-x64
       executable-path: MyApplication.exe
       report-label: My Application
+      interactive-report-url: https://owner.github.io/performance-dashboard/
 
   pages:
     needs: performance
@@ -202,6 +198,8 @@ jobs:
       history-days: 30
       maximum-runs: 50
 ```
+
+Set `interactive-report-url` to the deployed Pages root of the caller repository. The profiling job summary then links directly to the online report instead of asking readers to download chart files. Leave it unset when the caller does not publish a Pages dashboard.
 
 Add a separate manually dispatched or scheduled caller when expired reports should disappear even when no new profile is produced:
 

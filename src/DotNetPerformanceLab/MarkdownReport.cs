@@ -11,16 +11,21 @@ public static class MarkdownReport
         string path,
         PerformanceRunResult result,
         MarkdownReportTarget target,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? interactiveReportUrl = null)
     {
         var builder = new StringBuilder();
         builder.AppendLine("# .NET Performance Analysis Report").AppendLine();
         builder.Append("**Target:** ").Append(Escape(result.ReportLabel)).AppendLine("  ");
-        builder.Append("**Executable:** `").Append(EscapeCode(result.TargetPath)).AppendLine("`  ");
+        builder.Append("**Executable:** `").Append(EscapeCode(Path.GetFileName(result.TargetPath))).AppendLine("`  ");
         builder.Append("**Generated:** ").Append(result.GeneratedUtc.ToString("u", CultureInfo.InvariantCulture)).AppendLine().AppendLine();
-        if (target == MarkdownReportTarget.DownloadableArtifact)
+
+        var reportUrl = target == MarkdownReportTarget.DownloadableArtifact
+            ? "web-report/index.html"
+            : ValidReportUrl(interactiveReportUrl);
+        if (!string.IsNullOrWhiteSpace(reportUrl))
         {
-            builder.AppendLine("[Open the interactive Plotly report](web-report/index.html)").AppendLine();
+            builder.Append("[Open the interactive performance dashboard](").Append(reportUrl).AppendLine(")").AppendLine();
         }
 
         builder.AppendLine("## Executive summary").AppendLine();
@@ -65,8 +70,6 @@ public static class MarkdownReport
         AppendProperty(builder, "Physical memory", FormatBytes(result.Environment.TotalMemoryBytes));
         AppendProperty(builder, "Swap", FormatBytes(result.Environment.TotalSwapBytes));
         AppendProperty(builder, "Containerized", result.Environment.Containerized?.ToString() ?? "Unknown");
-        AppendProperty(builder, "Machine", result.Environment.MachineName);
-        AppendProperty(builder, "Runner", result.Environment.RunnerName);
         AppendProperty(builder, "Runner OS", result.Environment.RunnerOs);
         AppendProperty(builder, "Runner architecture", result.Environment.RunnerArchitecture);
 
@@ -96,9 +99,10 @@ public static class MarkdownReport
         if (result.RuntimeMetrics.Count > 0)
         {
             builder.AppendLine().AppendLine("### Runtime counter summary").AppendLine();
+            builder.AppendLine("Runtime counters are collected in a separate diagnostic pass. Zero values mean no activity was observed during that interval; JIT counters are expected to remain zero for Native AOT applications.").AppendLine();
             builder.AppendLine("| Metric | Tags | Mean | Maximum | Final | Samples |");
             builder.AppendLine("|---|---|---:|---:|---:|---:|");
-            foreach (var metric in result.RuntimeMetrics)
+            foreach (var metric in result.RuntimeMetrics.Where(metric => !IsZero(metric)))
             {
                 var divisor = metric.Unit.StartsWith("MB", StringComparison.Ordinal) ? BytesPerMegabyte : metric.Unit.StartsWith("ms", StringComparison.Ordinal) ? 0.001 : 1;
                 builder.Append("| ").Append(Escape(metric.Name))
@@ -109,20 +113,12 @@ public static class MarkdownReport
                     .Append(" | ").Append(metric.Samples)
                     .AppendLine(" |");
             }
-        }
 
-        builder.AppendLine().AppendLine("## Charts").AppendLine();
-        if (target == MarkdownReportTarget.DownloadableArtifact)
-        {
-            builder.AppendLine("![CPU usage](charts/cpu.svg)").AppendLine();
-            builder.AppendLine("![Working set](charts/working-set.svg)").AppendLine();
-            builder.AppendLine("![Private memory](charts/private-memory.svg)").AppendLine();
-            builder.AppendLine("![Host CPU](charts/host-cpu.svg)").AppendLine();
-            builder.AppendLine("![Host memory](charts/host-memory.svg)").AppendLine();
-        }
-        else
-        {
-            builder.AppendLine("Download the performance report artifact from this workflow run to view the full-resolution SVG charts.").AppendLine();
+            var zeroMetrics = result.RuntimeMetrics.Where(IsZero).Select(metric => metric.Name).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
+            if (zeroMetrics.Length > 0)
+            {
+                builder.AppendLine().Append("**No activity observed:** ").Append(Escape(string.Join(", ", zeroMetrics))).AppendLine(".");
+            }
         }
 
         builder.AppendLine("## Interpretation notes").AppendLine();
@@ -210,6 +206,16 @@ public static class MarkdownReport
         value.HasValue ? value.Value.ToString($"F{decimals}", CultureInfo.InvariantCulture) + suffix : "N/A";
 
     private static string MetricSuffix(string unit) => string.IsNullOrEmpty(unit) ? string.Empty : $" {unit}";
+
+    private static bool IsZero(RuntimeMetricSummary metric) =>
+        Math.Abs(metric.Mean) < double.Epsilon &&
+        Math.Abs(metric.Maximum) < double.Epsilon &&
+        Math.Abs(metric.Final) < double.Epsilon;
+
+    private static string? ValidReportUrl(string? value) =>
+        Uri.TryCreate(value, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps
+            ? uri.AbsoluteUri
+            : null;
 
     private static string Escape(string value) => value.Replace("|", "\\|", StringComparison.Ordinal).Replace("\r", " ", StringComparison.Ordinal).Replace("\n", " ", StringComparison.Ordinal);
 

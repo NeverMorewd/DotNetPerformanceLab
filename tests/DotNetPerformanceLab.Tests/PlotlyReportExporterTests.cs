@@ -22,6 +22,8 @@ public sealed class PlotlyReportExporterTests : IDisposable
         Assert.True(File.Exists(Path.Combine(report, "assets", "licenses", "plotly-js.txt")));
         var data = await File.ReadAllTextAsync(Path.Combine(report, "assets", "data.js"), TestContext.Current.CancellationToken);
         Assert.Contains(MetricNames.ProcessCpuCore, data, StringComparison.Ordinal);
+        Assert.DoesNotContain("MachineName", data, StringComparison.Ordinal);
+        Assert.DoesNotContain("RunnerName", data, StringComparison.Ordinal);
     }
 
     private static PerformanceRunResult CreateResult() => new(

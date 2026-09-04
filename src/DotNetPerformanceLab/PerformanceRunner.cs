@@ -120,6 +120,7 @@ public sealed class PerformanceRunner
             await JsonSerializer.SerializeAsync(metricsStream, metrics, LabJsonContext.Default.IReadOnlyListMetricSample, cancellationToken).ConfigureAwait(false);
         }
         await PlotlyReportExporter.WriteAsync(outputDirectory, result, metrics, cancellationToken).ConfigureAwait(false);
+        await ComparisonDataExporter.WriteAsync(outputDirectory, ComparisonDataExporter.Create(result, metrics), cancellationToken).ConfigureAwait(false);
         await MarkdownReport.WriteAsync(
             Path.Combine(outputDirectory, "job-summary.md"),
             result,
